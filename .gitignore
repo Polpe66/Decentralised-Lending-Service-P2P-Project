@@ -1,0 +1,31 @@
+## Node / Hardhat
+node_modules/
+cache/
+artifacts/
+typechain-types/
+coverage/
+coverage.json
+
+## Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+## Geth data (non committare la blockchain locale)
+data/geth/
+data/history
+
+## Variabili d'ambiente / chiavi private
+.env
+*.env.local
+secrets.json
+
+## Keystore: la cartella va committata ma NON le password
+*psw.txt
+
+## OS
+.DS_Store
+Thumbs.db
