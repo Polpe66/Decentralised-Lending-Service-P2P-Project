@@ -1,0 +1,322 @@
+# CONTESTO PROGETTO — Peer2Peer Systems and Blockchains A.A. 2025/26
+# Servizio di Prestito Decentralizzato (Decentralised Lending Service)
+# Fonte: trascrizione lezione 10 (2026-05-05) + documento ProjectP2PBC_LAB2526.pdf
+# Formato ottimizzato per consultazione AI durante l'implementazione.
+
+================================================================================
+## 1. PANORAMICA DEL SISTEMA
+================================================================================
+
+Il sistema è una DAO (Decentralised Autonomous Organisation) semplificata che implementa
+un servizio di prestito decentralizzato su Ethereum. Opera tramite un insieme di smart
+contract e un oracolo off-chain per la lettura della blockchain Bitcoin.
+
+ATTORI:
+- CONTRIBUTOR: utente che deposita/preleva valore nel funding pool e vota le proposte.
+  Considerato contributor chiunque abbia un deposito non-zero (incluso valore bloccato in prestiti).
+- APPLICANT: utente che richiede un prestito. Può essere lo stesso utente che è contributor.
+  Considerato applicant chiunque abbia una proposta attiva, un prestito attivo, o un prestito
+  approvato/rifiutato.
+
+================================================================================
+## 2. STRUTTURA DEI POOL
+================================================================================
+
+FUNDING POOL:
+- Contiene tutto il valore depositato dai contributor.
+- Parte del valore può essere bloccata (locked) nei prestiti attivi.
+- Ogni contributor può depositare o prelevare il proprio valore non bloccato (DISPOSABLE VALUE).
+
+DISPOSABLE VALUE (per contributor):
+  = valore_depositato_dal_contributor - valore_bloccato_nei_prestiti_attivi
+
+COMPENSATION POOL:
+- Raccoglie una frazione degli interessi di ogni prestito rimborsato.
+- Viene usato per compensare i contributor in caso di prestito fallito.
+- Non dipende dai singoli contributor: è un pool comune.
+
+================================================================================
+## 3. COSTANTI DI SISTEMA
+================================================================================
+
+| Costante                         | Valore                                      |
+|----------------------------------|---------------------------------------------|
+| PROPOSAL_VOTING_PERIOD           | 12 blocchi                                  |
+| MIN_DEPOSIT_AMOUNT               | 100.000 wei                                 |
+| INITIAL_COLLATERAL_PERCENTAGE    | 50 (range 1–100)                            |
+| COLLATERAL_PCT_STEP              | +5 per prestito fallito, -5 per successo    |
+| BTC_ETH_EXCHANGE_RATE            | 1 BTC = 30 ETH (hardcoded)                  |
+| ORACLE_MIN_FEE                   | gas_cost(oracle_update) × 0.1 gwei          |
+
+COLLATERAL_PERCENTAGE è la percentuale degli interessi destinata al compensation pool.
+Varia dinamicamente: aumenta con i fallimenti, diminuisce con i successi.
+
+================================================================================
+## 4. OPERAZIONI DEI CONTRIBUTOR
+================================================================================
+
+4.1 DEPOSIT
+- Qualsiasi utente può depositare un importo ≥ MIN_DEPOSIT_AMOUNT nel funding pool.
+- Chiunque abbia depositato diventa contributor.
+
+4.2 WITHDRAW
+- Il contributor può prelevare al massimo il proprio DISPOSABLE VALUE.
+- Non può prelevare valore bloccato in un prestito attivo.
+
+4.3 VOTE
+- Il contributor può votare SÌ o NO su una proposta di prestito attiva.
+- Non votare equivale a NO implicito.
+- Il voto è booleano (approve/reject).
+- Può essere espresso solo durante il periodo di votazione (proposta attiva).
+
+4.4 RICHIESTA COMPENSAZIONE (per prestito fallito)
+- Un prestito è FAILED se: non rimborsato interamente AND scaduto (block_height > expiry).
+- I prestiti parzialmente rimborsati ma scaduti sono considerati failed.
+- Il contributor può richiedere compensazione dal compensation pool.
+- Riceve abbastanza valore dal pool per coprire il valore che aveva bloccato in quel
+  prestito e che non è stato ancora restituito dall'applicant.
+  (Gli interessi già pagati da rimborsi parziali NON sono conteggiati qui.)
+- Se il compensation pool non ha abbastanza valore, riceve quanto disponibile.
+  Può ripetere l'operazione successivamente man mano che il pool si riempie.
+- Richiedere compensazione forfeita i rimborsi parziali proporzionali dell'applicant
+  per quel prestito (se l'applicant successivamente rimborsa parte del prestito fallito).
+- La compensazione marca il prestito come failed, influenzando il COLLATERAL_PERCENTAGE.
+- Un prestito può essere marcato failed UNA SOLA VOLTA.
+- Un prestito failed non può diventare successful anche se poi rimborsato integralmente.
+
+================================================================================
+## 5. OPERAZIONI DEGLI APPLICANT
+================================================================================
+
+5.1 RICHIESTA AGGIORNAMENTO ORACLE
+- L'applicant (prima di sottomettere una proposta) richiede all'oracle di aggiornare
+  il saldo dell'indirizzo Bitcoin che userà come collaterale.
+- Non obbligatorio, ma raccomandato (influenza il Bitcoin liquidity check alla risoluzione).
+- Deve allegare una fee ≥ ORACLE_MIN_FEE.
+
+5.2 SUBMIT PROPOSAL (nuova proposta di prestito)
+Parametri richiesti:
+  - amount: importo richiesto in ETH (wei)
+  - interest_rate: percentuale intera tra 1 e 100 (es. 50 = 50% di interesse sul capitale)
+  - duration: durata del prestito in blocchi
+  - btc_address: indirizzo Bitcoin usato come prova di liquidità
+
+Dopo la sottomissione: inizia il periodo di votazione (PROPOSAL_VOTING_PERIOD blocchi).
+
+5.3 RICHIESTA RISOLUZIONE PROPOSTA
+- Solo l'applicant originale può richiedere la risoluzione.
+- Richiesta valida solo dopo che il periodo di votazione è trascorso.
+- CONDIZIONI DI RIGETTO IMMEDIATO (prima del conteggio voti):
+  (a) Il CUMULATIVE DISPOSABLE VALUE del funding pool < importo richiesto.
+  (b) Il Bitcoin liquidity check fallisce.
+  Se si verifica (a) o (b): proposta rifiutata come se avesse vinto il voto di rigetto.
+- CONTEGGIO VOTI (se non rigettata immediatamente):
+  Ogni voto è pesato sul DISPOSABLE VALUE del contributor rispetto al totale dei
+  disposable value di tutti i contributor.
+  I contributor che non hanno votato contano come NO.
+  Se voti_sì > voti_no: proposta APPROVATA → viene creato un nuovo loan contract.
+  Se voti_sì ≤ voti_no (incluso pareggio): proposta RIFIUTATA.
+
+5.4 RIMBORSO PARZIALE (partial repay)
+- Solo l'applicant originale può rimborsare il proprio prestito.
+- Può rimborsare prestiti attivi O prestiti failed.
+- Può rimborsare più dell'importo originale (anche se economicamente irrazionale).
+- Il valore inviato è suddiviso in BASE AMOUNT e INTEREST:
+    base_amount = min(payment, remaining_loan_amount)
+    interest = payment - base_amount  (se payment > remaining_loan_amount)
+    (nota: il rimborso parziale viene suddiviso proporzionalmente tra base e interest
+     secondo le regole specificate nel documento)
+
+SUDDIVISIONE DEL BASE AMOUNT tra i contributor:
+- Rimborsati in ordine dal maggiore al minore per valore bloccato iniziale al momento
+  della creazione del prestito (tie-break: ordine alfabetico degli indirizzi Ethereum).
+- Il valore restituito sblocca il corrispondente valore nel funding pool del contributor.
+- Eventuali discrepanze per aritmetica intera vanno dedotte dall'importo del prestito
+  (NON accreditate all'applicant).
+
+SUDDIVISIONE DELL'INTEREST tra GAIN e COLLATERAL:
+  collateral = interest × COLLATERAL_PERCENTAGE / 100  → va al compensation pool
+  gain = interest - collateral                          → va direttamente ai contributor
+- Il gain è distribuito ai contributor proporzionalmente al loro valore bloccato
+  nel prestito (stesso ordine, stessa regola di tie-break).
+- Eventuali discrepanze per aritmetica intera vanno al compensation pool.
+- Il collateral va interamente al compensation pool.
+
+SE IL RIMBORSO TOTALE SUPERA L'IMPORTO ORIGINALE:
+- Una volta rimborsato l'intero capitale, tutto l'eccesso va al compensation pool.
+- Questo marca il prestito come SUCCESSFUL, influenzando il COLLATERAL_PERCENTAGE.
+- Il prestito viene chiuso.
+
+NOTA: "partial repay" può rimborsare l'intero prestito in una sola operazione.
+
+================================================================================
+## 6. MECCANISMO DI VOTO — DETTAGLIO
+================================================================================
+
+Quando una proposta viene approvata:
+
+1. Viene deployato un nuovo smart contract (loan management contract).
+2. Il valore richiesto viene bloccato proporzionalmente dal funding pool di tutti i
+   contributor, in base al loro DISPOSABLE VALUE corrente:
+
+   valore_bloccato_contributor_i = floor(amount × disposable_i / total_disposable)
+
+3. Eventuali discrepanze per aritmetica intera (leftover) vengono detratte dall'importo
+   del prestito. L'importo effettivo del prestito (loaned amount) DEVE riflettere questa
+   discrepanza — l'applicant riceve il loaned amount, non il proposal amount.
+
+4. Il nuovo prestito viene creato con il COLLATERAL_PERCENTAGE corrente al momento
+   della creazione (NON aggiornato successivamente).
+
+================================================================================
+## 7. BITCOIN LIQUIDITY ORACLE
+================================================================================
+
+7.1 COMPONENTE ON-CHAIN (smart contract su Ethereum)
+- Mantiene una mappa: btc_address → balance_in_BTC.
+- Espone funzione per aggiornare/inserire una entry (richiede fee ≥ ORACLE_MIN_FEE).
+- La richiesta di aggiornamento EMETTE UN EVENTO che il componente off-chain ascolta.
+- Espone funzione di lettura per altri smart contract (es. il lending service).
+
+7.2 COMPONENTE OFF-CHAIN (codice esterno, Python consigliato)
+- Mantiene una copia locale della blockchain Bitcoin (Bitcoin Core).
+- Mantiene un UTXO set aggiornato per efficienza.
+- Ascolta eventi emessi dall'oracle contract su Ethereum.
+- Per ogni evento di richiesta aggiornamento:
+  a. Calcola il saldo corrente dell'indirizzo Bitcoin (somma UTXO non spesi).
+  b. Invia una transazione Ethereum per aggiornare la mappa nell'oracle contract.
+- L'oracle ha un proprio account Ethereum finanziato per pagare il gas.
+- Il codice deve funzionare come se la blockchain Bitcoin crescesse continuamente
+  (un blocco alla volta). In pratica: esegui solo sui primi 131.000 blocchi del mainnet
+  Bitcoin (come visto a lezione), ma il codice deve essere corretto per blocchi aggiuntivi.
+
+7.3 BITCOIN LIQUIDITY CHECK (alla risoluzione della proposta)
+- Il lending service legge dall'oracle contract il saldo BTC dell'indirizzo specificato.
+- Converte in ETH: balance_ETH = balance_BTC × BTC_ETH_EXCHANGE_RATE (1 BTC = 30 ETH).
+- Controlla: balance_ETH ≥ loan_amount (+ eventuale interesse, scelta di design).
+- Se ≥: check PASSED. Se <: proposta RIFIUTATA.
+- NOTA DI SICUREZZA: questo meccanismo è insicuro per design (didattico). L'applicant
+  non deve dimostrare di possedere l'indirizzo Bitcoin. Nulla è bloccato on-chain Bitcoin.
+
+================================================================================
+## 8. REQUISITI IMPLEMENTATIVI (Sezione 1.5 del PDF — TUTTI OBBLIGATORI)
+================================================================================
+
+SMART CONTRACT:
+[R1] Emettere eventi dove necessario (es. nuova proposta, voto, creazione prestito, ecc.).
+[R2] Ogni prestito approvato → nuovo smart contract deployato (pattern factory).
+     La logica di gestione rimborsi, interessi, compensation pool è nel loan contract.
+[R3] Gestire correttamente la terminazione dei loan contract (self-destruct o equivalente).
+     Nessun contratto "dangling" deve rimanere attivo indefinitamente.
+[R4] Gestire l'upgradability del contratto principale (pattern proxy, come visto a lezione).
+     Il contratto principale è il factory → upgradarlo cambia il template dei loan contract.
+
+TESTING E DEPLOYMENT:
+[R5] Usare Hardhat per i test. Fornire file di test che showcasino l'esecuzione corretta
+     in diverse circostanze e comportamenti utente.
+[R6] Usare una private chain locale con il genesis file fornito nel progetto.
+     Gli account pre-finanziati nel genesis possono SOLO trasferire valore ad altri account.
+     Non possono deployare contratti o eseguire altri tipi di transazione.
+[R7] Script Python per il setup iniziale del servizio (creazione account, deploy contratti,
+     finanziamento account, deploy oracle, ecc.).
+[R8] Script Python che esegue un esempio completo di operazioni mostrando l'esecuzione
+     corretta del servizio. Deve includere stampa dei saldi dopo ogni cambiamento rilevante
+     e di altre variabili di stato significative.
+[R9] Script Python che implementa una strategia automatica per un contributor che vota
+     sempre SÌ a ogni nuova proposta (anche se il voto è irrilevante perché tutti i fondi
+     sono bloccati). Il contributor deve "accorgersi" delle nuove proposte tramite eventi.
+[R10] Test/script per misurare il gas cost di ogni operazione (misurazione programmatica,
+      non copia da Remix).
+[R11] Modificare i contratti per introdurre una vulnerabilità reentrancy e mostrare
+      un test che esegue l'attacco (eventuale contratto malevolo aggiuntivo).
+[R12] Discutere se esiste una strategia malevola per un contributor per ottenere
+      remunerazione ingiusta a spese di altri contributor onesti (senza reentrancy),
+      es. sfruttando la regola di maggioranza nel rimborso. Fornire script dimostrativo.
+
+ORACLE OFF-CHAIN:
+[R13] Implementare il componente off-chain dell'oracle in Python (o linguaggio alternativo
+      concordato con il prof via email).
+[R14] Elaborare i blocchi Bitcoin uno alla volta (come se arrivassero in tempo reale).
+[R15] Eseguire solo sui primi 131.000 blocchi del mainnet Bitcoin (limite artificiale
+      per ridurre sync time e dimensione file). Il codice deve essere corretto anche
+      per blocchi aggiuntivi.
+
+================================================================================
+## 9. REGOLE DI SUBMISSION
+================================================================================
+
+Consegna: UN singolo file zip su Moodle contenente:
+- Tutti i sorgenti Solidity degli smart contract.
+- Tutti gli script (testing, deployment, setup, contributor automatico, gas, reentrancy,
+  strategia malevola).
+- La cartella Hardhat (zippata).
+- Report PDF di MAX 5 PAGINE (font leggibile, margini normali) in INGLESE contenente:
+  (a) Descrizione breve delle scelte implementative principali.
+  (b) Risultati valutazione gas, modifica reentrancy, discussione strategia malevola.
+  (c) Breve manuale utente con istruzioni per eseguire il codice.
+
+Struttura cartelle: sensata e leggibile (es. "hardhat/", "scripts/", "contracts/",
+"oracle/", "reentrancy/").
+
+Gruppi: max 2 studenti. Ogni studente deve poter discutere il progetto da solo all'esame.
+Discussione: all'esame orale della prima sessione disponibile in cui lo studente è iscritto.
+È consentito usare il proprio laptop durante la discussione del progetto all'esame orale.
+
+================================================================================
+## 10. NOTE DI DESIGN (dal professore)
+================================================================================
+
+- Il lending service probabilmente consiste in un BUNDLE di smart contract, non uno solo.
+- Il contratto principale funge da FACTORY che deploya nuovi loan contract.
+- L'upgradability è più rilevante sul contratto principale (è lui che crea i loan contract).
+- I loan contract non necessitano obbligatoriamente di upgradability (scelta del progettista).
+- Usare il genesis file fornito nel progetto (modifiche solo previa email al prof).
+- Il genesis file contiene un account pre-finanziato con il keystore/password forniti.
+  Usarlo SOLO per finanziare altri account, non per deployare contratti.
+- Per la fase iniziale: Remix va bene. Per testing serio: usare Hardhat.
+- Python fortemente raccomandato per gli script di setup/interazione (Web3.py come visto
+  a lezione). JavaScript (ethers.js) accettabile previa comunicazione con il prof.
+- Per l'oracle off-chain: può usare Java + Python come visto a lezione, o solo Python.
+- I BLK file di Bitcoin Core sono disponibili (stessa chain usata a lezione).
+
+================================================================================
+## 11. ESEMPIO NUMERICO COMPLETO (dal professore)
+================================================================================
+
+STATO INIZIALE:
+  C1: deposito 3 ETH, disposable 3 ETH
+  C2: deposito 2 ETH, disposable 2 ETH
+  C3: deposito 1 ETH, disposable 1 ETH
+  Total funding pool: 6 ETH, total disposable: 6 ETH
+
+C2 preleva 1 ETH → C2 disposable: 1 ETH. Pool: 5 ETH disponibili.
+C3 deposita 1 ETH → C3 disposable: 2 ETH. Pool: 6 ETH disponibili.
+C4 deposita 1 ETH → C4 disposable: 1 ETH. Pool: 7 ETH disponibili.
+
+PROPOSTA 1: A1 chiede 2 ETH, interesse 50%, durata 100 blocchi.
+  Voti: C1=sì(3), C3=sì(2), C4=no(1), C2=no implicito(1)
+  Totale disposable: C1=3, C2=1, C3=2, C4=1 → tot=7
+  Pesi: sì = 3+2=5, no = 1+1=2 → APPROVATA
+  Bloccato proporzionalmente:
+    C1: floor(2 × 3/7) = floor(6/7) = 0  ← attenzione, qui i numeri del prof erano
+    (il prof ha usato numeri semplificati a lezione: assume 2 ETH bloccati da C1)
+  [Nota: i calcoli esatti seguono la formula floor(amount × disposable_i / total_disposable)]
+
+PROPOSTA 2: A2 chiede 2 ETH (con 2 ETH già bloccati da proposta 1).
+  C1 disposable ora: 3 - 2 (bloccati) = 1 ETH
+  Voti: C1=sì(1), C3=sì(2), C4=no(1), C2=no implicito(1)
+  Totale disposable corrente: 1+1+2+1=5
+  Pesi: sì=1+2=3... (ma il prof ha mostrato un caso semplificato con parità)
+  [Nota: il professore ha illustrato il concetto con numeri semplificati per mostrare
+   come il locking riduca il peso del voto di C1]
+
+RIMBORSO PRESTITO A1 (2 ETH, interesse 50% → totale da rimborsare 3 ETH):
+  Rimborso parziale 1: 1 ETH
+    base = 2/3 di 1 ETH ≈ 0.667 ETH → restituito ai contributor
+    interest = 1/3 di 1 ETH ≈ 0.333 ETH → split: gain e collateral (al 50%)
+    gain ≈ 0.167 ETH → ai contributor direttamente
+    collateral ≈ 0.167 ETH → compensation pool
+  [I valori esatti dipendono dall'aritmetica intera — consultare il PDF per le regole precise]
+
+================================================================================
+FIN DEL DOCUMENTO
