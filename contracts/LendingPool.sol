@@ -38,12 +38,15 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     // ── Proposal state ────────────────────────────────────────────────────────
 
     struct Proposal {
-        address applicant;
-        uint256 amount;
-        uint8   interestRate;   // 1-100
-        uint256 duration;       // blocks
-        bytes32 btcAddressHash;
-        uint256 submittedBlock;
+        address   applicant;
+        uint256   amount;
+        uint8     interestRate;   // 1-100
+        uint256   duration;       // blocks
+        bytes32   btcAddressHash;
+        uint256   submittedBlock;
+        address[] approveVoters;
+        mapping(address => bool) hasVoted;
+        mapping(address => bool) voteApprove;
     }
 
     uint256 public proposalCount;
@@ -57,6 +60,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     event LoanDeregistered(address indexed loanContract);
     event CollateralPercentageChanged(uint256 newValue);
     event ProposalSubmitted(uint256 indexed proposalId, address indexed applicant, uint256 amount);
+    event ProposalVoted(uint256 indexed proposalId, address indexed voter, bool approve);
 
     // ── Constructor / Initializer ─────────────────────────────────────────────
 
@@ -156,6 +160,21 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         emit ProposalSubmitted(proposalId, msg.sender, amount);
     }
 
+    function vote(uint256 proposalId, bool approve) external {
+        Proposal storage p = _proposals[proposalId];
+        require(p.applicant != address(0),  "Proposal does not exist");
+        require(isContributor(msg.sender),  "Not a contributor");
+        require(!p.hasVoted[msg.sender],    "Already voted");
+
+        p.hasVoted[msg.sender]    = true;
+        p.voteApprove[msg.sender] = approve;
+        if (approve) {
+            p.approveVoters.push(msg.sender);
+        }
+
+        emit ProposalVoted(proposalId, msg.sender, approve);
+    }
+
     // ── Proposal views ────────────────────────────────────────────────────────
 
     function getProposal(uint256 proposalId) external view returns (
@@ -164,7 +183,8 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         uint8   interestRate,
         uint256 duration,
         bytes32 btcAddressHash,
-        uint256 submittedBlock
+        uint256 submittedBlock,
+        uint256 approveVoterCount
     ) {
         Proposal storage p = _proposals[proposalId];
         return (
@@ -173,8 +193,17 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
             p.interestRate,
             p.duration,
             p.btcAddressHash,
-            p.submittedBlock
+            p.submittedBlock,
+            p.approveVoters.length
         );
+    }
+
+    function hasVotedOn(uint256 proposalId, address voter) external view returns (bool) {
+        return _proposals[proposalId].hasVoted[voter];
+    }
+
+    function getVoteApprove(uint256 proposalId, address voter) external view returns (bool) {
+        return _proposals[proposalId].voteApprove[voter];
     }
 
     // ── Loan lifecycle hooks (called by registered Loan contracts) ────────────
