@@ -4,6 +4,7 @@ pragma solidity ^0.8.22;
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+
 interface IBitcoinOracle {
     function getEthEquivalent(bytes32 btcAddressHash) external view returns (uint256);
     function requestUpdate(bytes32 btcAddressHash) external payable;
@@ -34,6 +35,23 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
 
     mapping(address => bool) public isActiveLoan;    // registered loan contracts
 
+    // ── Proposal state ────────────────────────────────────────────────────────
+
+    struct Proposal {
+        address   applicant;
+        uint256   amount;
+        uint8     interestRate;   // 1-100
+        uint256   duration;       // blocks
+        bytes32   btcAddressHash;
+        uint256   submittedBlock;
+        address[] approveVoters;
+        mapping(address => bool) hasVoted;
+        mapping(address => bool) voteApprove;
+    }
+
+    uint256 public proposalCount;
+    mapping(uint256 => Proposal) internal _proposals;
+
     // ── Events ────────────────────────────────────────────────────────────────
 
     event Deposited(address indexed contributor, uint256 amount);
@@ -41,6 +59,8 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     event LoanRegistered(address indexed loanContract);
     event LoanDeregistered(address indexed loanContract);
     event CollateralPercentageChanged(uint256 newValue);
+    event ProposalSubmitted(uint256 indexed proposalId, address indexed applicant, uint256 amount);
+    event ProposalVoted(uint256 indexed proposalId, address indexed voter, bool approve);
 
     // ── Constructor / Initializer ─────────────────────────────────────────────
 
@@ -114,6 +134,76 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         uint256 fee = oracle.MIN_ORACLE_FEE();
         require(msg.value >= fee, "Fee too low");
         oracle.requestUpdate{value: msg.value}(btcAddressHash);
+    }
+
+    // ── Proposal system ───────────────────────────────────────────────────────
+
+    function submitProposal(
+        uint256 amount,
+        uint8   interestRate,
+        uint256 duration,
+        bytes32 btcAddressHash
+    ) external returns (uint256 proposalId) {
+        require(amount > 0,                               "Zero amount");
+        require(interestRate >= 1 && interestRate <= 100, "Rate out of range");
+        require(duration > 0,                             "Zero duration");
+
+        proposalId = proposalCount++;
+        Proposal storage p = _proposals[proposalId];
+        p.applicant      = msg.sender;
+        p.amount         = amount;
+        p.interestRate   = interestRate;
+        p.duration       = duration;
+        p.btcAddressHash = btcAddressHash;
+        p.submittedBlock = block.number;
+
+        emit ProposalSubmitted(proposalId, msg.sender, amount);
+    }
+
+    function vote(uint256 proposalId, bool approve) external {
+        Proposal storage p = _proposals[proposalId];
+        require(p.applicant != address(0),  "Proposal does not exist");
+        require(isContributor(msg.sender),  "Not a contributor");
+        require(!p.hasVoted[msg.sender],    "Already voted");
+
+        p.hasVoted[msg.sender]    = true;
+        p.voteApprove[msg.sender] = approve;
+        if (approve) {
+            p.approveVoters.push(msg.sender);
+        }
+
+        emit ProposalVoted(proposalId, msg.sender, approve);
+    }
+
+    // ── Proposal views ────────────────────────────────────────────────────────
+
+    function getProposal(uint256 proposalId) external view returns (
+        address applicant,
+        uint256 amount,
+        uint8   interestRate,
+        uint256 duration,
+        bytes32 btcAddressHash,
+        uint256 submittedBlock,
+        uint256 approveVoterCount
+    ) {
+        Proposal storage p = _proposals[proposalId];
+        return (
+            p.applicant,
+            p.amount,
+            p.interestRate,
+            p.duration,
+            p.btcAddressHash,
+            p.submittedBlock,
+            p.approveVoters.length
+        );
+    }
+
+    function hasVotedOn(uint256 proposalId, address voter) external view returns (bool) {
+        return _proposals[proposalId].hasVoted[voter];
+    }
+
+    function getVoteApprove(uint256 proposalId, address voter) external view returns (bool) {
+        return _proposals[proposalId].voteApprove[voter];
     }
 
     // ── Loan lifecycle hooks (called by registered Loan contracts) ────────────
