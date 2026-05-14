@@ -425,16 +425,32 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         compensationPool += msg.value;
     }
 
-    function drainFromCompensationPool(
+    /// Drain `amount` from the compensation pool and pay it to `contributor` as
+    /// compensation for value lost in a failed loan. Caller is responsible for
+    /// passing `amount = min(owed, compensationPool)` — this function reverts on
+    /// overdraw to make the CEI invariant in LoanContract explicit.
+    ///
+    /// Side effects: reduces contributor's funding-pool position
+    /// (deposits + lockedValue) by `amount`. The compensated portion is
+    /// "closed out" from the funding pool — it was lost to the failed loan and
+    /// has now been replaced via the compensation pool.
+    function compensateFromPool(
         address contributor,
         uint256 amount
-    ) external onlyActiveLoan returns (uint256 actual) {
-        actual = amount > compensationPool ? compensationPool : amount;
-        compensationPool -= actual;
-        if (actual > 0) {
-            (bool ok, ) = contributor.call{value: actual}("");
-            require(ok, "Compensation transfer failed");
-        }
+    ) external onlyActiveLoan nonReentrant {
+        require(amount > 0, "Zero amount");
+        require(amount <= compensationPool, "Exceeds comp pool");
+        require(deposits[contributor] >= amount, "Underflow deposit");
+        require(lockedValue[contributor] >= amount, "Underflow locked");
+
+        compensationPool -= amount;
+        deposits[contributor] -= amount;
+        lockedValue[contributor] -= amount;
+        totalFundingPool -= amount;
+        totalLocked -= amount;
+
+        (bool ok, ) = contributor.call{value: amount}("");
+        require(ok, "Compensation transfer failed");
     }
 
     // ── Collateral percentage (called by loan on close) ───────────────────────
