@@ -6,7 +6,9 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 interface IBitcoinOracle {
-    function getEthEquivalent(bytes32 btcAddressHash) external view returns (uint256);
+    function getEthEquivalent(
+        bytes32 btcAddressHash
+    ) external view returns (uint256);
     function requestUpdate(bytes32 btcAddressHash) external payable;
     function MIN_ORACLE_FEE() external view returns (uint256);
 }
@@ -16,34 +18,41 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     uint256 private _reentrancyStatus; // 1 = free, 2 = entered
     // ── Constants ─────────────────────────────────────────────────────────────
 
-    uint256 public constant MIN_DEPOSIT              = 100_000; // wei
-    uint256 public constant INITIAL_COLLATERAL_PCT   = 50;
-    uint256 public constant PROPOSAL_VOTING_PERIOD   = 12;      // blocks
-    uint256 public constant COLLATERAL_STEP          = 5;
+    uint256 public constant MIN_DEPOSIT = 100_000; // wei
+    uint256 public constant INITIAL_COLLATERAL_PCT = 50;
+    uint256 public constant PROPOSAL_VOTING_PERIOD = 12; // blocks
+    uint256 public constant COLLATERAL_STEP = 5;
 
     // ── State ─────────────────────────────────────────────────────────────────
 
     IBitcoinOracle public oracle;
 
-    uint256 public totalFundingPool;   // sum of all deposits (including locked)
-    uint256 public totalLocked;        // sum of all lockedValue across contributors
-    uint256 public compensationPool;   // separate compensation pool balance
+    uint256 public totalFundingPool; // sum of all deposits (including locked)
+    uint256 public totalLocked; // sum of all lockedValue across contributors
+    uint256 public compensationPool; // separate compensation pool balance
     uint256 public collateralPercentage;
 
-    mapping(address => uint256) public deposits;     // deposited (including locked)
-    mapping(address => uint256) public lockedValue;  // locked in active loans
+    mapping(address => uint256) public deposits; // deposited (including locked)
+    mapping(address => uint256) public lockedValue; // locked in active loans
 
-    mapping(address => bool) public isActiveLoan;    // registered loan contracts
+    mapping(address => bool) public isActiveLoan; // registered loan contracts
 
     // ── Proposal state ────────────────────────────────────────────────────────
 
+    enum ProposalStatus {
+        Active,
+        Approved,
+        Rejected
+    }
+
     struct Proposal {
-        address   applicant;
-        uint256   amount;
-        uint8     interestRate;   // 1-100
-        uint256   duration;       // blocks
-        bytes32   btcAddressHash;
-        uint256   submittedBlock;
+        address applicant;
+        uint256 amount;
+        uint8 interestRate; // 1-100
+        uint256 duration; // blocks
+        bytes32 btcAddressHash;
+        uint256 submittedBlock;
+        ProposalStatus status;
         address[] approveVoters;
         mapping(address => bool) hasVoted;
         mapping(address => bool) voteApprove;
@@ -52,6 +61,10 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     uint256 public proposalCount;
     mapping(uint256 => Proposal) internal _proposals;
 
+    // ordered list of all addresses that have ever deposited — used in resolveProposal
+    address[] private _contributorList;
+    mapping(address => bool) private _contributorTracked;
+
     // ── Events ────────────────────────────────────────────────────────────────
 
     event Deposited(address indexed contributor, uint256 amount);
@@ -59,8 +72,22 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     event LoanRegistered(address indexed loanContract);
     event LoanDeregistered(address indexed loanContract);
     event CollateralPercentageChanged(uint256 newValue);
-    event ProposalSubmitted(uint256 indexed proposalId, address indexed applicant, uint256 amount);
-    event ProposalVoted(uint256 indexed proposalId, address indexed voter, bool approve);
+    event ProposalSubmitted(
+        uint256 indexed proposalId,
+        address indexed applicant,
+        uint256 amount
+    );
+    event ProposalVoted(
+        uint256 indexed proposalId,
+        address indexed voter,
+        bool approve
+    );
+    event ProposalApproved(
+        uint256 indexed proposalId,
+        address indexed loanContract,
+        uint256 loanedAmount
+    );
+    event ProposalRejected(uint256 indexed proposalId);
 
     // ── Constructor / Initializer ─────────────────────────────────────────────
 
@@ -93,7 +120,9 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     // ── Views ─────────────────────────────────────────────────────────────────
 
     /// ETH not locked in any loan for this contributor
-    function disposableValue(address contributor) public view returns (uint256) {
+    function disposableValue(
+        address contributor
+    ) public view returns (uint256) {
         return deposits[contributor] - lockedValue[contributor];
     }
 
@@ -111,6 +140,10 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
 
     function deposit() external payable nonReentrant {
         require(msg.value >= MIN_DEPOSIT, "Below min deposit");
+        if (!_contributorTracked[msg.sender]) {
+            _contributorTracked[msg.sender] = true;
+            _contributorList.push(msg.sender);
+        }
         deposits[msg.sender] += msg.value;
         totalFundingPool += msg.value;
         emit Deposited(msg.sender, msg.value);
@@ -118,7 +151,10 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
 
     function withdraw(uint256 amount) external nonReentrant {
         require(amount > 0, "Zero amount");
-        require(disposableValue(msg.sender) >= amount, "Insufficient disposable");
+        require(
+            disposableValue(msg.sender) >= amount,
+            "Insufficient disposable"
+        );
         // checks-effects-interactions
         deposits[msg.sender] -= amount;
         totalFundingPool -= amount;
@@ -140,20 +176,20 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
 
     function submitProposal(
         uint256 amount,
-        uint8   interestRate,
+        uint8 interestRate,
         uint256 duration,
         bytes32 btcAddressHash
     ) external returns (uint256 proposalId) {
-        require(amount > 0,                               "Zero amount");
+        require(amount > 0, "Zero amount");
         require(interestRate >= 1 && interestRate <= 100, "Rate out of range");
-        require(duration > 0,                             "Zero duration");
+        require(duration > 0, "Zero duration");
 
         proposalId = proposalCount++;
         Proposal storage p = _proposals[proposalId];
-        p.applicant      = msg.sender;
-        p.amount         = amount;
-        p.interestRate   = interestRate;
-        p.duration       = duration;
+        p.applicant = msg.sender;
+        p.amount = amount;
+        p.interestRate = interestRate;
+        p.duration = duration;
         p.btcAddressHash = btcAddressHash;
         p.submittedBlock = block.number;
 
@@ -162,11 +198,12 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
 
     function vote(uint256 proposalId, bool approve) external {
         Proposal storage p = _proposals[proposalId];
-        require(p.applicant != address(0),  "Proposal does not exist");
-        require(isContributor(msg.sender),  "Not a contributor");
-        require(!p.hasVoted[msg.sender],    "Already voted");
+        require(p.applicant != address(0), "Proposal does not exist");
+        require(p.status == ProposalStatus.Active, "Proposal not active");
+        require(isContributor(msg.sender), "Not a contributor");
+        require(!p.hasVoted[msg.sender], "Already voted");
 
-        p.hasVoted[msg.sender]    = true;
+        p.hasVoted[msg.sender] = true;
         p.voteApprove[msg.sender] = approve;
         if (approve) {
             p.approveVoters.push(msg.sender);
@@ -177,15 +214,22 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
 
     // ── Proposal views ────────────────────────────────────────────────────────
 
-    function getProposal(uint256 proposalId) external view returns (
-        address applicant,
-        uint256 amount,
-        uint8   interestRate,
-        uint256 duration,
-        bytes32 btcAddressHash,
-        uint256 submittedBlock,
-        uint256 approveVoterCount
-    ) {
+    function getProposal(
+        uint256 proposalId
+    )
+        external
+        view
+        returns (
+            address applicant,
+            uint256 amount,
+            uint8 interestRate,
+            uint256 duration,
+            bytes32 btcAddressHash,
+            uint256 submittedBlock,
+            uint256 approveVoterCount,
+            ProposalStatus status
+        )
+    {
         Proposal storage p = _proposals[proposalId];
         return (
             p.applicant,
@@ -194,42 +238,174 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
             p.duration,
             p.btcAddressHash,
             p.submittedBlock,
-            p.approveVoters.length
+            p.approveVoters.length,
+            p.status
         );
     }
 
-    function hasVotedOn(uint256 proposalId, address voter) external view returns (bool) {
+    function hasVotedOn(
+        uint256 proposalId,
+        address voter
+    ) external view returns (bool) {
         return _proposals[proposalId].hasVoted[voter];
     }
 
-    function getVoteApprove(uint256 proposalId, address voter) external view returns (bool) {
+    function getVoteApprove(
+        uint256 proposalId,
+        address voter
+    ) external view returns (bool) {
         return _proposals[proposalId].voteApprove[voter];
+    }
+
+    // ── Proposal resolution ───────────────────────────────────────────────────
+
+    function resolveProposal(uint256 proposalId) external nonReentrant {
+        Proposal storage p = _proposals[proposalId];
+        require(p.applicant != address(0), "Proposal does not exist");
+        require(p.applicant == msg.sender, "Not applicant");
+        require(p.status == ProposalStatus.Active, "Proposal not active");
+        require(
+            block.number > p.submittedBlock + PROPOSAL_VOTING_PERIOD,
+            "Voting period not over"
+        );
+
+        uint256 totalDisp = totalDisposable();
+
+        // Early rejection: pool has insufficient disposable liquidity
+        if (totalDisp < p.amount) {
+            p.status = ProposalStatus.Rejected;
+            emit ProposalRejected(proposalId);
+            return;
+        }
+
+        // Early rejection: BTC liquidity check (oracle ETH equivalent < loan amount)
+        uint256 btcEth = oracle.getEthEquivalent(p.btcAddressHash);
+        if (btcEth < p.amount) {
+            p.status = ProposalStatus.Rejected;
+            emit ProposalRejected(proposalId);
+            return;
+        }
+
+        // Weighted vote count.
+        // Non-voters are implicit NO → weightedNo = totalDisp - weightedYes.
+        // Approved only if weightedYes > weightedNo (strict; tie → rejected).
+        uint256 weightedYes = 0;
+        for (uint256 i = 0; i < p.approveVoters.length; i++) {
+            weightedYes += disposableValue(p.approveVoters[i]);
+        }
+        if (weightedYes * 2 <= totalDisp) {
+            p.status = ProposalStatus.Rejected;
+            emit ProposalRejected(proposalId);
+            return;
+        }
+
+        // Approved: lock funds proportionally from all contributors with disposable > 0.
+        // share_i = floor(amount × disposable_i / totalDisp)
+        // loanedAmount = sum(share_i) ≤ amount  (integer leftover deducted, not credited)
+        p.status = ProposalStatus.Approved;
+
+        uint256 n = _contributorList.length;
+        address[] memory addrs = new address[](n);
+        uint256[] memory shares = new uint256[](n);
+        uint256 count = 0;
+        uint256 loanedAmount = 0;
+
+        for (uint256 i = 0; i < n; i++) {
+            address c = _contributorList[i];
+            uint256 disp = disposableValue(c);
+            if (disp == 0) continue;
+            uint256 share = (p.amount * disp) / totalDisp;
+            if (share == 0) continue; // floor rounded to zero — skip to save gas
+            addrs[count] = c;
+            shares[count] = share;
+            loanedAmount += share;
+            count++;
+        }
+
+        // Sort DESC by share, tie-break ASC by address — LoanContract uses this order for repayments
+        _sortContributors(addrs, shares, count);
+
+        // Apply locks (share ≤ disposable_i is guaranteed since amount ≤ totalDisp)
+        for (uint256 i = 0; i < count; i++) {
+            lockedValue[addrs[i]] += shares[i];
+        }
+        totalLocked += loanedAmount;
+
+        // TODO Task #9: deploy LoanContract once LoanContract.sol is implemented
+        // address loanAddr = address(new LoanContract{value: loanedAmount}(
+        //     p.applicant,
+        //     loanedAmount,
+        //     collateralPercentage,
+        //     p.interestRate,
+        //     p.duration,
+        //     _slice(addrs, count),
+        //     _slice(shares, count)
+        // ));
+        // isActiveLoan[loanAddr] = true;
+        // emit LoanRegistered(loanAddr);
+        // emit ProposalApproved(proposalId, loanAddr, loanedAmount);
+
+        emit ProposalApproved(proposalId, address(0), loanedAmount);
+    }
+
+    // Insertion sort: DESC by share, tie-break ASC by address (cheaper than quicksort for small N)
+    function _sortContributors(
+        address[] memory addrs,
+        uint256[] memory shares,
+        uint256 count
+    ) internal pure {
+        for (uint256 i = 1; i < count; i++) {
+            address a = addrs[i];
+            uint256 s = shares[i];
+            uint256 j = i;
+            while (
+                j > 0 &&
+                (shares[j - 1] < s || (shares[j - 1] == s && addrs[j - 1] > a))
+            ) {
+                addrs[j] = addrs[j - 1];
+                shares[j] = shares[j - 1];
+                j--;
+            }
+            addrs[j] = a;
+            shares[j] = s;
+        }
     }
 
     // ── Loan lifecycle hooks (called by registered Loan contracts) ────────────
 
-    function lockValue(address contributor, uint256 amount) external onlyActiveLoan {
-        require(disposableValue(contributor) >= amount, "Insufficient disposable");
+    function lockValue(
+        address contributor,
+        uint256 amount
+    ) external onlyActiveLoan {
+        require(
+            disposableValue(contributor) >= amount,
+            "Insufficient disposable"
+        );
         lockedValue[contributor] += amount;
         totalLocked += amount;
     }
 
-    function unlockValue(address contributor, uint256 amount) external onlyActiveLoan {
+    function unlockValue(
+        address contributor,
+        uint256 amount
+    ) external onlyActiveLoan {
         require(lockedValue[contributor] >= amount, "Underflow locked");
         lockedValue[contributor] -= amount;
         totalLocked -= amount;
     }
 
     /// Called by loan on repayment: refund base amount to contributor's deposit
-    function creditRepayment(address contributor, uint256 amount) external onlyActiveLoan {
+    function creditRepayment(
+        address contributor,
+        uint256 amount
+    ) external onlyActiveLoan {
         deposits[contributor] += amount;
         totalFundingPool += amount;
     }
 
-    /// Called by loan on interest distribution: credit gain directly (not into deposit)
-    function creditInterest(address contributor, uint256 amount) external payable onlyActiveLoan {
-        // Interest gain is sent directly to contributor, not added to pool
-        (bool ok, ) = contributor.call{value: amount}("");
+    /// Called by loan on interest distribution: forward msg.value directly to contributor
+    function creditInterest(address contributor) external payable onlyActiveLoan {
+        (bool ok, ) = contributor.call{value: msg.value}("");
         require(ok, "Interest transfer failed");
     }
 
@@ -237,11 +413,10 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         compensationPool += msg.value;
     }
 
-    function drainFromCompensationPool(address contributor, uint256 amount)
-        external
-        onlyActiveLoan
-        returns (uint256 actual)
-    {
+    function drainFromCompensationPool(
+        address contributor,
+        uint256 amount
+    ) external onlyActiveLoan returns (uint256 actual) {
         actual = amount > compensationPool ? compensationPool : amount;
         compensationPool -= actual;
         if (actual > 0) {
@@ -259,10 +434,9 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     }
 
     function decreaseCollateral() external onlyActiveLoan {
-        uint256 next = collateralPercentage > COLLATERAL_STEP
+        collateralPercentage = collateralPercentage > COLLATERAL_STEP
             ? collateralPercentage - COLLATERAL_STEP
             : 1;
-        collateralPercentage = next < 1 ? 1 : next;
         emit CollateralPercentageChanged(collateralPercentage);
     }
 
