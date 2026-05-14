@@ -58,6 +58,13 @@ contract LoanContract {
     uint256 public remainingLoanAmount;
     Status public status;
 
+    /// Terminal flag — once true, no state-changing operation is permitted on
+    /// this loan. Set by `terminate()`. Solidity ^0.8.22 still compiles
+    /// `selfdestruct` but EIP-6049 marks it deprecated and (post-Cancun) it no
+    /// longer clears storage. We use a flag instead for equivalent semantics:
+    /// the loan becomes inert and its address can be safely deregistered.
+    bool public terminated;
+
     event LoanCreated(
         address indexed applicant,
         uint256 loanedAmount,
@@ -77,6 +84,7 @@ contract LoanContract {
         uint256 owed,
         uint256 paid
     );
+    event LoanTerminated(address indexed loan);
 
     modifier onlyApplicant() {
         require(msg.sender == applicant, "Only applicant");
@@ -85,6 +93,11 @@ contract LoanContract {
 
     modifier onlyLendingPool() {
         require(msg.sender == address(lendingPool), "Only LendingPool");
+        _;
+    }
+
+    modifier notTerminated() {
+        require(!terminated, "Terminated");
         _;
     }
 
@@ -163,7 +176,7 @@ contract LoanContract {
 
     /// Called by LendingPool when a contributor requests compensation on this loan.
     /// A loan can only be marked failed once and only while still Active.
-    function markFailed() external onlyLendingPool {
+    function markFailed() external onlyLendingPool notTerminated {
         require(status == Status.Active, "Not active");
         status = Status.Failed;
         emit MarkedFailed();
@@ -171,7 +184,7 @@ contract LoanContract {
 
     // ── Repayment ─────────────────────────────────────────────────────────────
 
-    function partialRepay() external payable onlyApplicant {
+    function partialRepay() external payable onlyApplicant notTerminated {
         require(
             status == Status.Active || status == Status.Failed,
             "Loan closed"
@@ -331,7 +344,7 @@ contract LoanContract {
     /// Claiming sets up the caller's `outstanding` (alreadyCompensated −
     /// compRecovered) which proportionally diverts future partialRepay shares
     /// back to the comp pool until the advance is recovered (see partialRepay).
-    function requestCompensation() external {
+    function requestCompensation() external notTerminated {
         // Loan must be "failed" for compensation purposes:
         //   - Status Active → transition to Failed if expired AND not fully repaid.
         //   - Status Failed → already marked, claims always allowed while owed > 0
@@ -371,6 +384,69 @@ contract LoanContract {
         }
 
         emit CompensationRequested(msg.sender, owed, paid);
+    }
+
+    /// Permissionless terminator. Callable by anyone once conditions hold:
+    ///   - status == Successful (full repayment closed the loan), OR
+    ///   - status == Failed AND no contributor has outstanding owed > 0
+    ///     (every locked share has been either unlocked via repayLockedValue
+    ///     or compensated via requestCompensation).
+    ///
+    /// Effects:
+    ///   - Forwards any residual contract balance back to the LendingPool
+    ///     (to the compensation pool while still registered; via plain transfer
+    ///     once deregistered).
+    ///   - Self-deregisters from LendingPool (Failed branch). Successful loans
+    ///     have already deregistered themselves during their close branch.
+    ///   - Sets `terminated = true`. The `notTerminated` modifier then blocks
+    ///     any further state-changing call (partialRepay, requestCompensation,
+    ///     markFailed).
+    ///
+    /// Spec [R3]: "no loan contract must remain active indefinitely". This
+    /// function is the explicit cleanup hook required by that rule.
+    function terminate() external {
+        require(!terminated, "Already terminated");
+
+        if (status == Status.Successful) {
+            // Successful loans already deregistered at close — nothing more to
+            // do on the LendingPool side; forward any donated dust (open
+            // receive() means anyone could have wired ETH here post-close).
+        } else if (status == Status.Failed) {
+            // Every contributor's claim must be fully settled (either repaid
+            // back by applicant or covered by compensation pool).
+            uint256 n = contributors.length;
+            for (uint256 i = 0; i < n; i++) {
+                address c = contributors[i].addr;
+                uint256 il = contributors[i].initialLocked;
+                uint256 owed = il -
+                    unlockedSoFar[c] -
+                    alreadyCompensated[c];
+                require(owed == 0, "Outstanding compensation");
+            }
+            // Forward residual through the tracked path BEFORE deregistering,
+            // so the comp pool counter reflects any dust. Then self-deregister.
+            if (address(this).balance > 0) {
+                lendingPool.addToCompensationPool{
+                    value: address(this).balance
+                }();
+            }
+            lendingPool.markLoanClosed();
+        } else {
+            // Status.Active — loan still in progress.
+            revert("Loan still active");
+        }
+
+        // Final sweep for edge-case ETH (e.g., donations to a Successful loan):
+        // route to LendingPool via its receive() fallback. Untracked but parked
+        // in a non-burnable address.
+        uint256 bal = address(this).balance;
+        if (bal > 0) {
+            (bool ok, ) = address(lendingPool).call{value: bal}("");
+            require(ok, "Forward failed");
+        }
+
+        terminated = true;
+        emit LoanTerminated(address(this));
     }
 
     /// Proportional forfeit split for a **base** share going to contributor `c`.

@@ -932,4 +932,205 @@ describe("LoanContract", function () {
             expect(compDelta).to.be.gte((ONE_ETH * 56n) / 10n); // 4.5 + 1.1
         });
     });
+
+    // ── terminate() — explicit cleanup hook [R3] ──────────────────────────────
+
+    describe("terminate", function () {
+        /// Build a loan, fully repay it → Successful, returns the loan handle.
+        async function makeSuccessful() {
+            const loan = await setupLoan6_4_5();
+            await loan
+                .connect(applicant)
+                .partialRepay({ value: ONE_ETH * 5n });
+            return loan;
+        }
+
+        /// Build a Failed loan, then refill comp pool & have c1, c2 each claim
+        /// until owed = 0 for everyone. Returns the loan handle.
+        async function makeFailedAllSettled() {
+            // Seed comp pool. Loan A: 2 ETH borrow, repay 4 (collateral 1 ETH).
+            await pool.connect(c1).deposit({ value: ONE_ETH * 6n });
+            await pool.connect(c2).deposit({ value: ONE_ETH * 4n });
+            await pool
+                .connect(applicant)
+                .submitProposal(ONE_ETH * 2n, RATE, DURATION, BTC);
+            await pool.connect(c1).vote(0n, true);
+            await pool.connect(c2).vote(0n, true);
+            await mine(15);
+            const txA = await pool.connect(applicant).resolveProposal(0n);
+            const rA = await txA.wait();
+            const logA = rA.logs.find(
+                (l) => l.fragment && l.fragment.name === "ProposalApproved"
+            );
+            const loanA = LoanFactory.attach(logA.args[1]);
+            await loanA
+                .connect(applicant)
+                .partialRepay({ value: ONE_ETH * 4n });
+
+            // Loan B: 5 ETH, expires unrepaid.
+            await pool
+                .connect(applicant)
+                .submitProposal(ONE_ETH * 5n, RATE, DURATION, BTC);
+            await pool.connect(c1).vote(1n, true);
+            await pool.connect(c2).vote(1n, true);
+            await mine(15);
+            const txB = await pool.connect(applicant).resolveProposal(1n);
+            const rB = await txB.wait();
+            const logB = rB.logs.find(
+                (l) => l.fragment && l.fragment.name === "ProposalApproved"
+            );
+            const loanB = LoanFactory.attach(logB.args[1]);
+            await mine(Number(DURATION) + 1);
+
+            // At least one comp claim transitions loan to Failed (required so
+            // the late full repay below stays in the wasFailed branch and the
+            // loan does NOT transition to Successful).
+            await loanB.connect(c1).requestCompensation();
+
+            // Applicant then fully repays Loan B. wasFailed branch keeps it
+            // Failed; forfeit logic plus residue refund clear owed for c1 and c2.
+            await loanB
+                .connect(applicant)
+                .partialRepay({ value: ONE_ETH * 5n });
+            return loanB;
+        }
+
+        // ── Preconditions ─────────────────────────────────────────────────────
+
+        it("reverts on Active loan", async function () {
+            const loan = await setupLoan6_4_5();
+            await expect(loan.connect(stranger).terminate()).to.be.revertedWith(
+                "Loan still active"
+            );
+        });
+
+        it("reverts on Failed loan with outstanding owed", async function () {
+            // Setup a failed loan with no late repay; c1/c2 still owed.
+            await pool.connect(c1).deposit({ value: ONE_ETH * 6n });
+            await pool.connect(c2).deposit({ value: ONE_ETH * 4n });
+            await pool
+                .connect(applicant)
+                .submitProposal(ONE_ETH * 5n, RATE, DURATION, BTC);
+            await pool.connect(c1).vote(0n, true);
+            await pool.connect(c2).vote(0n, true);
+            await mine(15);
+            const tx = await pool.connect(applicant).resolveProposal(0n);
+            const r = await tx.wait();
+            const log = r.logs.find(
+                (l) => l.fragment && l.fragment.name === "ProposalApproved"
+            );
+            const loan = LoanFactory.attach(log.args[1]);
+            await mine(Number(DURATION) + 1);
+            // c1 claims (transitions to Failed). owed still > 0 (comp pool empty).
+            await loan.connect(c1).requestCompensation();
+            await expect(
+                loan.connect(stranger).terminate()
+            ).to.be.revertedWith("Outstanding compensation");
+        });
+
+        it("reverts if already terminated", async function () {
+            const loan = await makeSuccessful();
+            await loan.connect(stranger).terminate();
+            await expect(
+                loan.connect(stranger).terminate()
+            ).to.be.revertedWith("Already terminated");
+        });
+
+        // ── Successful path ───────────────────────────────────────────────────
+
+        it("permissionless: anyone can terminate a Successful loan", async function () {
+            const loan = await makeSuccessful();
+            await expect(loan.connect(stranger).terminate()).to.not.be.reverted;
+            expect(await loan.terminated()).to.be.true;
+        });
+
+        it("emits LoanTerminated(loanAddress)", async function () {
+            const loan = await makeSuccessful();
+            await expect(loan.connect(stranger).terminate())
+                .to.emit(loan, "LoanTerminated")
+                .withArgs(loan.target);
+        });
+
+        // ── Failed-all-settled path ───────────────────────────────────────────
+
+        it("succeeds on Failed loan once everyone settled (late full repay)", async function () {
+            const loan = await makeFailedAllSettled();
+            expect(await loan.status()).to.equal(1n); // Failed
+            // Verify owed == 0 for both before terminate.
+            const il1 = (await loan.contributors(0)).initialLocked;
+            const ac1 = await loan.alreadyCompensated(c1.address);
+            const us1 = await loan.unlockedSoFar(c1.address);
+            expect(il1 - us1 - ac1).to.equal(0n);
+
+            expect(await pool.isActiveLoan(loan.target)).to.be.true;
+            await loan.connect(stranger).terminate();
+            expect(await loan.terminated()).to.be.true;
+            // Failed branch: terminate() self-deregistered the loan.
+            expect(await pool.isActiveLoan(loan.target)).to.be.false;
+        });
+
+        it("forwards residual ETH to LendingPool (Failed branch via comp pool)", async function () {
+            const loan = await makeFailedAllSettled();
+            // Donate dust directly to the loan to simulate stray ETH.
+            await stranger.sendTransaction({
+                to: loan.target,
+                value: 12345n,
+            });
+            const compBefore = await pool.compensationPool();
+            await loan.connect(stranger).terminate();
+            const compAfter = await pool.compensationPool();
+            expect(compAfter - compBefore).to.equal(12345n);
+            // Loan balance drained.
+            expect(
+                await ethers.provider.getBalance(loan.target)
+            ).to.equal(0n);
+        });
+
+        it("Successful path: dust donations forwarded via receive() (untracked)", async function () {
+            const loan = await makeSuccessful();
+            // Loan is already deregistered → can't use addToCompensationPool.
+            await stranger.sendTransaction({ to: loan.target, value: 777n });
+            const poolEthBefore = await ethers.provider.getBalance(pool.target);
+            await loan.connect(stranger).terminate();
+            const poolEthAfter = await ethers.provider.getBalance(pool.target);
+            expect(poolEthAfter - poolEthBefore).to.equal(777n);
+            expect(
+                await ethers.provider.getBalance(loan.target)
+            ).to.equal(0n);
+        });
+
+        // ── Guards on state-changing operations after terminate ──────────────
+
+        it("partialRepay reverts after terminate", async function () {
+            const loan = await makeFailedAllSettled();
+            await loan.connect(stranger).terminate();
+            await expect(
+                loan.connect(applicant).partialRepay({ value: ONE_ETH })
+            ).to.be.revertedWith("Terminated");
+        });
+
+        it("requestCompensation reverts after terminate", async function () {
+            const loan = await makeFailedAllSettled();
+            await loan.connect(stranger).terminate();
+            await expect(
+                loan.connect(c1).requestCompensation()
+            ).to.be.revertedWith("Terminated");
+        });
+
+        // ── Gas ───────────────────────────────────────────────────────────────
+
+        it("gas: terminate Successful", async function () {
+            const loan = await makeSuccessful();
+            const tx = await loan.connect(stranger).terminate();
+            const r = await tx.wait();
+            console.log(`\n    Gas terminate (Successful): ${r.gasUsed}`);
+        });
+
+        it("gas: terminate Failed-all-settled", async function () {
+            const loan = await makeFailedAllSettled();
+            const tx = await loan.connect(stranger).terminate();
+            const r = await tx.wait();
+            console.log(`\n    Gas terminate (Failed settled): ${r.gasUsed}`);
+        });
+    });
 });
