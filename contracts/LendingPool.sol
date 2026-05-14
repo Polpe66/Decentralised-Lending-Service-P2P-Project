@@ -5,6 +5,8 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
+import "./LoanContract.sol";
+
 interface IBitcoinOracle {
     function getEthEquivalent(
         bytes32 btcAddressHash
@@ -331,21 +333,27 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         }
         totalLocked += loanedAmount;
 
-        // TODO Task #9: deploy LoanContract once LoanContract.sol is implemented
-        // address loanAddr = address(new LoanContract{value: loanedAmount}(
-        //     p.applicant,
-        //     loanedAmount,
-        //     collateralPercentage,
-        //     p.interestRate,
-        //     p.duration,
-        //     _slice(addrs, count),
-        //     _slice(shares, count)
-        // ));
-        // isActiveLoan[loanAddr] = true;
-        // emit LoanRegistered(loanAddr);
-        // emit ProposalApproved(proposalId, loanAddr, loanedAmount);
+        // Trim sorted arrays to actual length before passing to LoanContract.
+        address[] memory finalAddrs = new address[](count);
+        uint256[] memory finalShares = new uint256[](count);
+        for (uint256 i = 0; i < count; i++) {
+            finalAddrs[i] = addrs[i];
+            finalShares[i] = shares[i];
+        }
 
-        emit ProposalApproved(proposalId, address(0), loanedAmount);
+        address loanAddr = address(
+            new LoanContract{value: loanedAmount}(
+                p.applicant,
+                loanedAmount,
+                collateralPercentage,
+                block.number + p.duration,
+                finalAddrs,
+                finalShares
+            )
+        );
+        isActiveLoan[loanAddr] = true;
+        emit LoanRegistered(loanAddr);
+        emit ProposalApproved(proposalId, loanAddr, loanedAmount);
     }
 
     // Insertion sort: DESC by share, tie-break ASC by address (cheaper than quicksort for small N)
@@ -394,13 +402,17 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         totalLocked -= amount;
     }
 
-    /// Called by loan on repayment: refund base amount to contributor's deposit
-    function creditRepayment(
+    /// Called by loan on base repayment: unlock contributor share and receive the
+    /// corresponding ETH back into the pool (offsets the disbursement at lock time).
+    /// deposits[c] is not touched — it was never decremented on lock.
+    function repayLockedValue(
         address contributor,
         uint256 amount
-    ) external onlyActiveLoan {
-        deposits[contributor] += amount;
-        totalFundingPool += amount;
+    ) external payable onlyActiveLoan {
+        require(msg.value == amount, "Value mismatch");
+        require(lockedValue[contributor] >= amount, "Underflow locked");
+        lockedValue[contributor] -= amount;
+        totalLocked -= amount;
     }
 
     /// Called by loan on interest distribution: forward msg.value directly to contributor
@@ -450,6 +462,12 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     function deregisterLoan(address loanContract) external onlyOwner {
         isActiveLoan[loanContract] = false;
         emit LoanDeregistered(loanContract);
+    }
+
+    /// Loan self-deregistration on close (called by LoanContract after success).
+    function markLoanClosed() external onlyActiveLoan {
+        isActiveLoan[msg.sender] = false;
+        emit LoanDeregistered(msg.sender);
     }
 
     // ── UUPS ──────────────────────────────────────────────────────────────────

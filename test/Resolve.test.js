@@ -1,5 +1,6 @@
 const { expect } = require("chai");
 const { ethers, upgrades, network } = require("hardhat");
+const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 
 describe("Proposal resolution", function () {
     let pool, mockOracle;
@@ -270,7 +271,7 @@ describe("Proposal resolution", function () {
             await mineBlocks(15);
             await expect(pool.connect(applicant).resolveProposal(0n))
                 .to.emit(pool, "ProposalApproved")
-                .withArgs(0n, ethers.ZeroAddress, LOANED);
+                .withArgs(0n, anyValue, LOANED);
             // verify it's strictly less than the requested amount due to floor
             expect(LOANED).to.be.lessThan(LOAN_AMOUNT);
         });
