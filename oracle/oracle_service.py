@@ -15,7 +15,13 @@ PROJECT_ROOT = SCRIPT_DIR.parent
 
 WEB3_PROVIDER_URI = 'http://127.0.0.1:8545'
 CHAIN_DATA_DIR = str(PROJECT_ROOT / 'chaindata')
+# Spec §1.4: l'oracolo deve girare solo sui primi 131.000 blocchi mainnet.
+# I primi 131k blocchi (era pre-2011, prevalentemente coinbase-only ~250-500 B)
+# stanno comodamente in blk00000.dat + blk00001.dat (~256 MiB totali, ben oltre
+# il fabbisogno effettivo). Cap esplicito sul numero di file evita di leggere
+# inutilmente blk00002.dat+ se per qualunque motivo restassero in chaindata/.
 MAX_BLOCKS = 131000
+MAX_BLK_FILES = 2
 POLL_INTERVAL = 2
 
 CONTRACT_INFO_FILE = str(PROJECT_ROOT / 'data' / 'oracle_contract_info.json')
@@ -36,7 +42,7 @@ def load_all_blocks():
     blocks = {}  # block_hash_hex -> (prevhash_hex, CBlock)
     file_idx = 0
 
-    while True:
+    while file_idx < MAX_BLK_FILES:
         filename = os.path.join(CHAIN_DATA_DIR, f"blk{file_idx:05d}.dat")
         if not os.path.exists(filename):
             break
