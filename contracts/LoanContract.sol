@@ -17,8 +17,10 @@ interface ILendingPool {
 }
 
 /// Standalone contract deployed by LendingPool when a proposal is approved [R2].
-/// Holds all repayment logic for a single loan. Distribution order: contributors
-/// passed by the parent DESC by initialLocked, tie-break ASC by address.
+/// Holds all repayment logic for a single loan. Capital repayment follows the
+/// spec waterfall: contributors are saturated one at a time in DESC initialLocked
+/// order (tie-break ASC by address) — the largest contributor must be made whole
+/// before any wei flows to the next. Interest distribution stays proportional.
 contract LoanContract {
     enum Status {
         Active,
@@ -199,27 +201,32 @@ contract LoanContract {
 
         uint256 n = contributors.length;
 
-        // Step 2 — Distribute base proportionally; order preserved (DESC initialLocked).
-        // For each contributor with an outstanding compensation claim, a proportional
-        // fraction of their share is routed back to the comp pool to recover the
-        // advance (rule from spec: claiming compensation "proportionally forfeits"
-        // future applicant repayments). The fraction = outstanding / remainingShare
-        // where remainingShare = initialLocked − unlockedSoFar − compRecovered. This
-        // formula guarantees that at full repayment compRecovered → alreadyCompensated
-        // (comp pool made whole) and unlockedSoFar + alreadyCompensated → initialLocked
-        // (contributor made whole), with no over-pay on either side.
-        uint256 baseDistributed = 0;
+        // Step 2 — Distribute base in waterfall order (spec): contributors iterated
+        // DESC by initialLocked (tie-break ASC by address); each is saturated up to
+        // remaining capacity before the next receives anything. capacity_c =
+        // initialLocked − unlockedSoFar − compRecovered, i.e. the part of c's share
+        // not yet settled by either a direct repay or a comp-pool advance recovery.
+        // Saturation implies take == capacity, so the floor in _splitBaseForfeit is
+        // exact at that point (toComp recovers full outstanding, toC fills c to L−AC).
+        // Floor dust can only appear on a non-saturating slice and is auto-corrected
+        // when c is saturated in a later call. Total ETH moved equals baseAmount —
+        // waterfall has no leftover, so no contract-held residue between calls.
+        uint256 baseRemaining = baseAmount;
         uint256 baseToComp = 0;
         if (baseAmount > 0) {
-            for (uint256 i = 0; i < n; i++) {
+            for (uint256 i = 0; i < n && baseRemaining > 0; i++) {
                 Contributor memory c = contributors[i];
-                uint256 share = (baseAmount * c.initialLocked) /
-                    totalInitialLocked;
-                if (share == 0) continue;
-                baseDistributed += share;
+                uint256 capacity = c.initialLocked -
+                    unlockedSoFar[c.addr] -
+                    compRecovered[c.addr];
+                if (capacity == 0) continue;
+                uint256 take = baseRemaining < capacity
+                    ? baseRemaining
+                    : capacity;
+                baseRemaining -= take;
                 (uint256 toComp_, uint256 toC_) = _splitBaseForfeit(
                     c.addr,
-                    share
+                    take
                 );
                 if (toComp_ > 0) {
                     baseToComp += toComp_;
@@ -231,9 +238,6 @@ contract LoanContract {
                 }
             }
         }
-        // baseLeftover (= baseAmount - baseDistributed) stays in this contract until
-        // close: it is the exact ETH needed to refund the lockedValue residue at the
-        // residual-unlock pass below, so we must NOT forward it to the comp pool here.
 
         // Step 3 — Split interest: collateral → comp pool, gain → contributors.
         // Gain forfeit uses a different ratio than base: a contributor with comp
@@ -271,18 +275,20 @@ contract LoanContract {
         if (remainingLoanAmount == 0) {
             bool wasFailed = status == Status.Failed;
 
-            // Residue pass — close out per-contributor accounting.
-            // Two steps per contributor:
-            //   1. Route the un-recovered gap (alreadyCompensated − compRecovered)
-            //      to the comp pool. With floor division on toComp during the base
-            //      loop, the pool may have recovered slightly less than it advanced;
-            //      this dust must not be refunded to c via repayLockedValue because
-            //      c's lockedValue was already decremented by alreadyCompensated at
-            //      compensation time — refunding it would underflow. Routing it back
-            //      to the comp pool closes the books cleanly.
-            //      Invariant gap_c ≤ residue_c follows from owed ≥ 0 at all comp
-            //      claim points (alreadyCompensated ≤ initialLocked − unlockedSoFar).
-            //   2. Refund the remaining rounding dust to c via repayLockedValue.
+            // Residue pass — defensive close-out per contributor.
+            // Under waterfall, full repay implies every contributor is saturated
+            // (take == capacity) in this or a previous call, and saturation makes
+            // _splitBaseForfeit exact (toComp == outstanding). So in the common
+            // path both `gap` and `residue` below evaluate to zero — the pass is
+            // a no-op. Kept as a defensive cleanup that also handles any future
+            // edge case where dust could survive (e.g. third-party value forwarded
+            // to this contract). Semantics if dust ever exists:
+            //   1. Route un-recovered gap (alreadyCompensated − compRecovered) to
+            //      the comp pool. Refunding to c via repayLockedValue would
+            //      underflow lockedValue because c's lockedValue was already
+            //      decremented by alreadyCompensated at compensation time.
+            //   2. Refund remaining dust (initialLocked − unlockedSoFar −
+            //      compRecovered) to c via repayLockedValue.
             for (uint256 i = 0; i < n; i++) {
                 address addr = contributors[i].addr;
                 uint256 il = contributors[i].initialLocked;
@@ -449,14 +455,15 @@ contract LoanContract {
         emit LoanTerminated(address(this));
     }
 
-    /// Proportional forfeit split for a **base** share going to contributor `c`.
+    /// Forfeit split for a **base** waterfall slice going to contributor `c`.
     /// toComp = floor(share × outstanding / remainingShare), where
     ///   outstanding    = alreadyCompensated[c] − compRecovered[c]  (pool's claim)
     ///   remainingShare = initialLockedOf[c] − unlockedSoFar[c] − compRecovered[c]
-    /// Dynamic ratio. Math invariant guarantees toComp ≤ outstanding (since
-    /// share ≤ remainingShare for base shares), so the outstanding cap is a
-    /// defensive guard rather than a tight bound. Result: when applicant fully
-    /// repays base, compRecovered → alreadyCompensated (comp pool made whole).
+    /// In the waterfall loop `share` ≤ `remainingShare` by construction (take =
+    /// min(baseRemaining, capacity), capacity == remainingShare), so toComp ≤
+    /// outstanding always holds and the cap is defensive only. When `share` ==
+    /// `remainingShare` (saturation) the floor is exact: toComp = outstanding,
+    /// recovering the full advance for the comp pool in that single call.
     function _splitBaseForfeit(
         address c,
         uint256 share

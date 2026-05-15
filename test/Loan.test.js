@@ -178,7 +178,7 @@ describe("LoanContract", function () {
     describe("base distribution — no interest", function () {
         it("clean division: distributes shares exactly, no leftover", async function () {
             const loan = await setupLoan6_4_5();
-            // Repay 5 ETH = full base, no interest. share1 = 3, share2 = 2, exact.
+            // Repay 5 ETH = full base, no interest. Waterfall saturates c1 (3) then c2 (2).
             await loan
                 .connect(applicant)
                 .partialRepay({ value: ONE_ETH * 5n });
@@ -189,21 +189,22 @@ describe("LoanContract", function () {
             expect(await pool.totalLocked()).to.equal(0n);
         });
 
-        it("partial: updates remainingLoanAmount, lockedValue", async function () {
+        it("partial: waterfall saturates c1 first, c2 untouched", async function () {
             const loan = await setupLoan6_4_5();
-            // Repay 2.5 ETH (half). share1 = 1.5, share2 = 1 (exact).
+            // Repay 2.5 ETH (half). Waterfall: c1 capacity=3, take=2.5; c2 take=0.
             const half = ONE_ETH * 25n / 10n;
             await loan.connect(applicant).partialRepay({ value: half });
             expect(await loan.remainingLoanAmount()).to.equal(
                 ONE_ETH * 5n - half
             );
-            // lockedValue after: c1 = 3 - 1.5 = 1.5, c2 = 2 - 1 = 1
+            // lockedValue after: c1 = 3 - 2.5 = 0.5, c2 = 2 - 0 = 2
             expect(await pool.lockedValue(c1.address)).to.equal(
-                ONE_ETH * 3n - (half * 3n) / 5n
+                ONE_ETH * 3n - half
             );
-            expect(await pool.lockedValue(c2.address)).to.equal(
-                ONE_ETH * 2n - (half * 2n) / 5n
-            );
+            expect(await pool.lockedValue(c2.address)).to.equal(ONE_ETH * 2n);
+            // unlockedSoFar reflects waterfall order
+            expect(await loan.unlockedSoFar(c1.address)).to.equal(half);
+            expect(await loan.unlockedSoFar(c2.address)).to.equal(0n);
             // Still Active
             expect(await loan.status()).to.equal(0n);
         });
@@ -330,11 +331,11 @@ describe("LoanContract", function () {
             );
             const loan = LoanFactory.attach(log.args[1]);
 
-            // Repay in two installments:
-            // R1: 7 wei → share1=floor(7*300k/500k)=4, share2=floor(7*200k/500k)=2, distrib=6, leftover=1
-            // R2: 499_993 wei → share1=floor(499_993*300k/500k)=299_995, share2=199_997, distrib=499_992, leftover=1
-            // Total residue per contributor: c1: 300_000-(4+299_995)=1, c2: 200_000-(2+199_997)=1
-            // Sum residue (2) == sum baseLeftover (2) ✓ fix should refund them.
+            // Repay in two installments (waterfall, no floor leftover on base):
+            // R1: 7 wei → c1 takes 7 (capacity 300k), c2 takes 0. unlockedSoFar c1=7.
+            // R2: 499_993 wei → c1 takes remaining 299_993 (saturates at 300k),
+            //                    c2 takes 200_000 (saturates). Both saturated, loan closes.
+            // No floor dust: each take is an exact integer; residue pass is a no-op.
             await loan.connect(applicant).partialRepay({ value: 7n });
             await loan
                 .connect(applicant)
@@ -349,7 +350,6 @@ describe("LoanContract", function () {
             expect(await pool.totalLocked()).to.equal(0n);
 
             // CRITICAL: LendingPool ETH balance == deposits sum + comp pool.
-            // Pre-fix this would underflow by 2 wei (baseLeftover double-counted).
             const poolEth = await ethers.provider.getBalance(pool.target);
             const sumDeposits = D1 + D2;
             const comp = await pool.compensationPool();
@@ -626,7 +626,7 @@ describe("LoanContract", function () {
             expect(await pool.totalLocked()).to.equal(totLockBefore - ONE_ETH);
         });
 
-        it("claim sets up outstanding for proportional forfeit", async function () {
+        it("claim sets up outstanding for waterfall forfeit", async function () {
             const loan = await setupExpired();
             // No claim → no outstanding, compRecovered=0, alreadyCompensated=0.
             expect(await loan.alreadyCompensated(c1.address)).to.equal(0n);
@@ -653,58 +653,57 @@ describe("LoanContract", function () {
 
         // ── Multi-call refill cycle ───────────────────────────────────────────
 
-        it("can claim more as comp pool refills (proportional split)", async function () {
+        it("can claim more as comp pool refills (waterfall split)", async function () {
             const loan = await setupExpired();
             // First claim: 1 ETH. outstanding = 1, remainingShare = 3.
             await loan.connect(c1).requestCompensation();
             expect(await loan.alreadyCompensated(c1.address)).to.equal(ONE_ETH);
 
-            // Applicant partial-repays 2 ETH. share c1 = 1.2, share c2 = 0.8.
-            // For c1: toComp = 1.2 * 1/3 = 0.4 → comp pool. toC = 0.8 → c1 via repay.
-            // For c2: outstanding=0, all to c2.
+            // Applicant partial-repays 2 ETH. Waterfall: c1 capacity=3, take=2;
+            //   c2 take=0.
+            // For c1: toComp = floor(2 * 1/3) = 666666666666666666 wei → comp pool.
+            //         toC   = 2e18 - toComp = 1333333333333333334 → c1 via repay.
+            const toComp = (ONE_ETH * 2n) / 3n;
+            const toC1 = ONE_ETH * 2n - toComp;
             await loan
                 .connect(applicant)
                 .partialRepay({ value: ONE_ETH * 2n });
-            expect(await pool.compensationPool()).to.equal(
-                (ONE_ETH * 4n) / 10n
-            );
-            expect(await loan.compRecovered(c1.address)).to.equal(
-                (ONE_ETH * 4n) / 10n
-            );
-            expect(await loan.unlockedSoFar(c1.address)).to.equal(
-                (ONE_ETH * 8n) / 10n
-            );
+            expect(await pool.compensationPool()).to.equal(toComp);
+            expect(await loan.compRecovered(c1.address)).to.equal(toComp);
+            expect(await loan.unlockedSoFar(c1.address)).to.equal(toC1);
+            expect(await loan.unlockedSoFar(c2.address)).to.equal(0n);
 
-            // c1 second claim: owed = 3 - 0.8 - 1 = 1.2; avail = 0.4 → paid = 0.4.
+            // c1 second claim: owed = 3 - toC1 - 1 = toComp; avail = toComp → paid = toComp.
             await expect(
                 loan.connect(c1).requestCompensation()
-            ).to.changeEtherBalance(c1, (ONE_ETH * 4n) / 10n);
+            ).to.changeEtherBalance(c1, toComp);
             expect(await loan.alreadyCompensated(c1.address)).to.equal(
-                ONE_ETH + (ONE_ETH * 4n) / 10n
+                ONE_ETH + toComp
             );
         });
 
         // ── partialRepay interaction with forfeited contributors ──────────────
 
-        it("partialRepay splits share proportionally for partially compensated c", async function () {
+        it("partialRepay splits share via waterfall for partially compensated c", async function () {
             const loan = await setupExpired();
             await loan.connect(c1).requestCompensation();
             // c1 outstanding = 1 ETH (alreadyCompensated=1, compRecovered=0).
-            // remainingShare = 3 - 0 - 0 = 3.
-            // Applicant repays 2.5 ETH. share c1 = 1.5, share c2 = 1.
-            // For c1: toComp = 1.5 * 1/3 = 0.5 → comp. toC = 1 → c1 via repay.
-            // For c2: outstanding=0, all 1 → c2.
+            // capacity_c1 = 3 - 0 - 0 = 3.
+            // Applicant repays 2.5 ETH. Waterfall: c1 take=2.5 (≤ capacity 3), c2 take=0.
+            // For c1: toComp = floor(2.5 * 1/3) = 833333333333333333 → comp pool.
+            //         toC   = 2.5e18 - toComp = 1666666666666666667 → c1 via repay.
+            // c2 untouched.
+            const repay = (ONE_ETH * 25n) / 10n;
+            const toComp = repay / 3n;
+            const toC1 = repay - toComp;
             const compBefore = await pool.compensationPool();
             await loan
                 .connect(applicant)
-                .partialRepay({ value: (ONE_ETH * 25n) / 10n });
-            expect(await pool.compensationPool()).to.equal(
-                compBefore + ONE_ETH / 2n
-            );
-            // c1 still gets 1 ETH back via repayLockedValue (lockedValue drops).
-            expect(await loan.unlockedSoFar(c1.address)).to.equal(ONE_ETH);
-            expect(await loan.compRecovered(c1.address)).to.equal(ONE_ETH / 2n);
-            expect(await loan.unlockedSoFar(c2.address)).to.equal(ONE_ETH);
+                .partialRepay({ value: repay });
+            expect(await pool.compensationPool()).to.equal(compBefore + toComp);
+            expect(await loan.unlockedSoFar(c1.address)).to.equal(toC1);
+            expect(await loan.compRecovered(c1.address)).to.equal(toComp);
+            expect(await loan.unlockedSoFar(c2.address)).to.equal(0n);
         });
 
         it("Failed loan full repay does NOT decrease collateral or deregister", async function () {
@@ -755,21 +754,22 @@ describe("LoanContract", function () {
             const loan = await setupExpired();
             await loan.connect(c1).requestCompensation(); // alreadyCompensated=1
 
-            // Applicant partial-repays 2 ETH. c1 share=1.2, toComp=0.4, toC=0.8.
+            // Applicant partial-repays 2 ETH. Waterfall: c1 take=2, c2 take=0.
+            // c1: toComp = floor(2 * 1/3), toC = 2 - toComp.
+            const toComp = (ONE_ETH * 2n) / 3n;
+            const toC1 = ONE_ETH * 2n - toComp;
             await loan
                 .connect(applicant)
                 .partialRepay({ value: ONE_ETH * 2n });
-            // Comp pool refilled by 0.4 ETH.
-            expect(await pool.compensationPool()).to.equal(
-                (ONE_ETH * 4n) / 10n
-            );
+            // Comp pool refilled by toComp.
+            expect(await pool.compensationPool()).to.equal(toComp);
 
-            // c1 still owed: 3 - 0.8 - 1 = 1.2. Comp pool has 0.4 → paid = 0.4.
+            // c1 still owed: 3 - toC1 - 1 = toComp. avail = toComp → paid = toComp.
             await expect(
                 loan.connect(c1).requestCompensation()
-            ).to.changeEtherBalance(c1, (ONE_ETH * 4n) / 10n);
+            ).to.changeEtherBalance(c1, toComp);
             expect(await loan.alreadyCompensated(c1.address)).to.equal(
-                (ONE_ETH * 14n) / 10n
+                ONE_ETH + toComp
             );
         });
 
