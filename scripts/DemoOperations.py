@@ -62,16 +62,16 @@ DEPOSITS = [
 ]
 WITHDRAW_WEI = Web3.to_wei("0.3", "ether")
 
-LOAN1_AMOUNT = Web3.to_wei("2", "ether")
+LOAN1_AMOUNT = Web3.to_wei("1", "ether")
 LOAN1_RATE = 20
 LOAN1_DURATION = 40
-REPAY1_MID = Web3.to_wei("0.8", "ether")
+REPAY1_MID = Web3.to_wei("0.4", "ether")
 # REPAY1_CLOSE computed at runtime so the loan closes exactly (remaining + interest).
 
-LOAN2_AMOUNT = Web3.to_wei("1.5", "ether")
+LOAN2_AMOUNT = Web3.to_wei("0.6", "ether")
 LOAN2_RATE = 30
 LOAN2_DURATION = 15
-LATE_REPAY = Web3.to_wei("0.6", "ether")
+LATE_REPAY = Web3.to_wei("0.25", "ether")
 
 # ── Stdout dup → file ──────────────────────────────────────────────────────────
 
@@ -80,11 +80,17 @@ class Tee:
         self.streams = streams
     def write(self, data):
         for s in self.streams:
-            s.write(data)
-            s.flush()
+            try:
+                s.write(data)
+                s.flush()
+            except ValueError:
+                pass
     def flush(self):
         for s in self.streams:
-            s.flush()
+            try:
+                s.flush()
+            except ValueError:
+                pass
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -128,15 +134,35 @@ def send_tx(w3, account, fn_call, value=0, gas=600_000):
     return rcpt
 
 def mine_blocks(w3, n):
+    """Advance n blocks.
+
+    Tries hardhat_mine / evm_mine first (for hardhat/anvil nodes). If neither
+    moves the head (e.g. geth, which mines on its own schedule), falls back to
+    polling block.number until target is reached. With Clique period=10 this
+    can take n * period seconds.
+    """
     if n <= 0:
         return
-    try:
-        w3.provider.make_request("hardhat_mine", [hex(n)])
-        return
-    except Exception:
-        pass
-    for _ in range(n):
-        w3.provider.make_request("evm_mine", [])
+    target = w3.eth.block_number + n
+    # Try RPC-driven mining first.
+    for method, args in (("hardhat_mine", [hex(n)]),
+                         ("evm_mine", [])):
+        try:
+            if method == "evm_mine":
+                for _ in range(n):
+                    w3.provider.make_request(method, [])
+            else:
+                w3.provider.make_request(method, args)
+            if w3.eth.block_number >= target:
+                return
+        except Exception:
+            pass
+    # Passive wait: node mines on its own (e.g. Clique PoA).
+    print(f"    (waiting for chain to reach block {target} — current "
+          f"{w3.eth.block_number} …)")
+    while w3.eth.block_number < target:
+        time.sleep(2)
+    print(f"    reached block {w3.eth.block_number}")
 
 def parse_events(rcpt, contract, event_name):
     ev = getattr(contract.events, event_name)()
@@ -335,7 +361,8 @@ def main():
         gas=400_000,
     )
     print_events(rcpt, pool, ["ProposalSubmitted"])
-    pid1 = 0
+    submitted = parse_events(rcpt, pool, "ProposalSubmitted")
+    pid1 = submitted[0]["args"]["proposalId"]
     p = pool.functions.getProposal(pid1).call()
     print(f"  proposalId           : {pid1}")
     print(f"  applicant            : {p[0]}")
@@ -347,9 +374,11 @@ def main():
 
     # ── Step 6: voting ────────────────────────────────────────────────────────
     banner("Step 6/15 — voting (proposal 1)")
-    votes = [(contributors[0], True),
+    # Mix approve/reject. With weights 0.7 / 2 / 3, c0's reject (smallest weight)
+    # does not block approval (yes weight = 5 > no weight = 0.7).
+    votes = [(contributors[0], False),
              (contributors[1], True),
-             (contributors[2], False)]
+             (contributors[2], True)]
     for voter, approve in votes:
         disp = pool.functions.disposableValue(voter.address).call()
         verdict = "APPROVE" if approve else "REJECT"
@@ -433,7 +462,8 @@ def main():
         gas=400_000,
     )
     print_events(rcpt, pool, ["ProposalSubmitted"])
-    pid2 = 1
+    submitted = parse_events(rcpt, pool, "ProposalSubmitted")
+    pid2 = submitted[0]["args"]["proposalId"]
     # All contributors approve
     for voter in contributors:
         send_tx(w3, voter, pool.functions.vote(pid2, True), gas=200_000)

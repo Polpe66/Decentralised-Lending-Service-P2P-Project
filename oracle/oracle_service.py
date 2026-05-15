@@ -1,19 +1,24 @@
 import os
 import time
 import json
+from pathlib import Path
 from web3 import Web3
 from web3.middleware import ExtraDataToPOAMiddleware
 from bitcoin.core import CBlock
 from bitcoin.core.script import CScript
 from bitcoin.wallet import CBitcoinAddress
 
-# Configurazioni
+# Configurazioni — path risolti rispetto alla posizione di questo script,
+# così funziona qualunque sia la cwd del processo Python.
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SCRIPT_DIR.parent
+
 WEB3_PROVIDER_URI = 'http://127.0.0.1:8545'
-CHAIN_DATA_DIR = '../chaindata'
+CHAIN_DATA_DIR = str(PROJECT_ROOT / 'chaindata')
 MAX_BLOCKS = 131000
 POLL_INTERVAL = 2
 
-CONTRACT_INFO_FILE = '../data/oracle_contract_info.json'
+CONTRACT_INFO_FILE = str(PROJECT_ROOT / 'data' / 'oracle_contract_info.json')
 
 MAINNET_MAGIC = b'\xf9\xbe\xb4\xd9'
 
@@ -143,7 +148,7 @@ def parse_blocks():
 
 def listen_to_requests(balances, w3, oracle_contract, operator_account):
     print("In ascolto di richieste UpdateRequested...")
-    event_filter = oracle_contract.events.UpdateRequested.create_filter(fromBlock='latest')
+    event_filter = oracle_contract.events.UpdateRequested.create_filter(from_block='latest')
 
     while True:
         try:

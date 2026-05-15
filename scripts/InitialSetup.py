@@ -47,13 +47,7 @@ ARTIFACTS = PROJECT_ROOT / "artifacts"
 ORACLE_ARTIFACT = ARTIFACTS / "contracts" / "BitcoinOracle.sol" / "BitcoinOracle.json"
 POOL_ARTIFACT = ARTIFACTS / "contracts" / "LendingPool.sol" / "LendingPool.json"
 PROXY_ARTIFACT = (
-    PROJECT_ROOT
-    / "node_modules"
-    / "@openzeppelin"
-    / "contracts"
-    / "build"
-    / "contracts"
-    / "ERC1967Proxy.json"
+    ARTIFACTS / "contracts" / "LocalProxy.sol" / "LocalERC1967Proxy.json"
 )
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.json"
@@ -138,6 +132,13 @@ def main():
             f"ERROR: chainId mismatch — node reports {node_chain_id}, expected {CHAIN_ID}"
         )
     print(f"Connected. chainId={CHAIN_ID}. Latest block: {w3.eth.block_number}")
+
+    # ── Step 0: cleanup stale artifacts from previous run ─────────────────────
+    print("\n── Step 0: cleaning up stale JSON artifacts ──")
+    for f in (ACCOUNTS_FILE, ORACLE_INFO_FILE, POOL_INFO_FILE):
+        if f.exists():
+            f.unlink()
+            print(f"  removed {f.name}")
 
     # ── Step 1: create accounts ───────────────────────────────────────────────
     print("\n── Step 1: creating accounts ──")
@@ -228,7 +229,7 @@ def main():
     proxy_addr, gas_proxy = deploy_contract(
         w3, proxy_artifact, deployer.key, deployer.address, dep_nonce,
         impl_addr, init_data,
-        gas=3_000_000,
+        gas=6_000_000,
     )
     print(f"  proxy:          {proxy_addr}  (gas {gas_proxy})")
 
