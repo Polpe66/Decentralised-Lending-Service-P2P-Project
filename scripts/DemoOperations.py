@@ -13,10 +13,10 @@ Prerequisites
     set) so requestOracleUpdate → BalanceUpdated cycle completes.
   - npx hardhat compile (artifacts must exist).
 
-Scenario (15 steps): setup balances, deposits, partial withdraw, oracle update,
+Scenario (16 steps): setup balances, deposits, partial withdraw, oracle update,
 proposal submit, voting, mine voting period, resolve, inspect loan,
 partialRepay (mid), partialRepay (close), failed-loan scenario, requestCompensation,
-late partialRepay, final state.
+late partialRepay, second compensation claim (refilled pool), final state.
 """
 
 import json
@@ -298,7 +298,7 @@ def main():
     applic_labels = [(f"applicant[{i}]", a) for i, a in enumerate(applicants)]
 
     # ── Step 1: setup balances ────────────────────────────────────────────────
-    banner("Step 1/15 — initial balances")
+    banner("Step 1/16 — initial balances")
     print_pool_state(pool, "initial")
     section("contributors")
     print_contributor_state(w3, pool, contrib_labels)
@@ -306,7 +306,7 @@ def main():
     print_applicant_state(w3, applic_labels)
 
     # ── Step 2: deposits ──────────────────────────────────────────────────────
-    banner("Step 2/15 — deposits")
+    banner("Step 2/16 — deposits")
     for c, amount in zip(contributors, DEPOSITS):
         print(f"\n  → {c.address} deposit {fmt_eth(amount)}")
         rcpt = send_tx(w3, c, pool.functions.deposit(), value=amount, gas=200_000)
@@ -316,7 +316,7 @@ def main():
     print_contributor_state(w3, pool, contrib_labels)
 
     # ── Step 3: partial withdraw ──────────────────────────────────────────────
-    banner("Step 3/15 — partial withdraw (contrib[0])")
+    banner("Step 3/16 — partial withdraw (contrib[0])")
     c0 = contributors[0]
     print(f"  pre  disposable[c0]: {fmt_eth(pool.functions.disposableValue(c0.address).call())}")
     print(f"  → withdraw {fmt_eth(WITHDRAW_WEI)}")
@@ -328,7 +328,7 @@ def main():
     print_contributor_state(w3, pool, contrib_labels)
 
     # ── Step 4: oracle update for BTC address ─────────────────────────────────
-    banner("Step 4/15 — oracle update request")
+    banner("Step 4/16 — oracle update request")
     min_fee = oracle.functions.MIN_ORACLE_FEE().call()
     print(f"  MIN_ORACLE_FEE: {fmt_wei(min_fee)}")
     block_before = w3.eth.block_number
@@ -352,7 +352,7 @@ def main():
         )
 
     # ── Step 5: submit proposal ───────────────────────────────────────────────
-    banner("Step 5/15 — submit proposal 1")
+    banner("Step 5/16 — submit proposal 1")
     print(f"  → applicant[0] submitProposal(amount={fmt_eth(LOAN1_AMOUNT)}, rate={LOAN1_RATE}%, "
           f"duration={LOAN1_DURATION}, btcHash)")
     rcpt = send_tx(
@@ -373,7 +373,7 @@ def main():
     print(f"  status               : {p[7]} (0=Active)")
 
     # ── Step 6: voting ────────────────────────────────────────────────────────
-    banner("Step 6/15 — voting (proposal 1)")
+    banner("Step 6/16 — voting (proposal 1)")
     # Mix approve/reject. With weights 0.7 / 2 / 3, c0's reject (smallest weight)
     # does not block approval (yes weight = 5 > no weight = 0.7).
     votes = [(contributors[0], False),
@@ -387,7 +387,7 @@ def main():
         print_events(rcpt, pool, ["ProposalVoted"])
 
     # ── Step 7: mine voting period ────────────────────────────────────────────
-    banner("Step 7/15 — mine PROPOSAL_VOTING_PERIOD + 1 blocks")
+    banner("Step 7/16 — mine PROPOSAL_VOTING_PERIOD + 1 blocks")
     vp = pool.functions.PROPOSAL_VOTING_PERIOD().call()
     print(f"  PROPOSAL_VOTING_PERIOD = {vp}; mining {vp + 1} blocks")
     print(f"  block before: {w3.eth.block_number}")
@@ -395,7 +395,7 @@ def main():
     print(f"  block after:  {w3.eth.block_number}")
 
     # ── Step 8: resolve proposal ──────────────────────────────────────────────
-    banner("Step 8/15 — resolve proposal 1")
+    banner("Step 8/16 — resolve proposal 1")
     print(f"  → applicant[0] resolveProposal({pid1})")
     rcpt = send_tx(w3, a0, pool.functions.resolveProposal(pid1), gas=3_000_000)
     print_events(rcpt, pool, ["ProposalApproved", "ProposalRejected", "LoanRegistered"])
@@ -408,7 +408,7 @@ def main():
     loan = w3.eth.contract(address=loan_addr, abi=loan_abi)
 
     # ── Step 9: inspect new LoanContract ──────────────────────────────────────
-    banner("Step 9/15 — inspect new LoanContract")
+    banner("Step 9/16 — inspect new LoanContract")
     print_loan_state(loan, "loan1")
     section("contributors after lock")
     print_contributor_state(w3, pool, contrib_labels)
@@ -417,7 +417,7 @@ def main():
     print_pool_state(pool, "post-resolve")
 
     # ── Step 10: partialRepay (mid) ───────────────────────────────────────────
-    banner("Step 10/15 — partialRepay (mid)")
+    banner("Step 10/16 — partialRepay (mid)")
     remaining_before = loan.functions.remainingLoanAmount().call()
     print(f"  → applicant[0] partialRepay value={fmt_eth(REPAY1_MID)} "
           f"(remaining before={fmt_eth(remaining_before)})")
@@ -429,7 +429,7 @@ def main():
     print_pool_state(pool, "post-mid-repay")
 
     # ── Step 11: partialRepay (close successful) ──────────────────────────────
-    banner("Step 11/15 — partialRepay (close, Successful)")
+    banner("Step 11/16 — partialRepay (close, Successful)")
     remaining = loan.functions.remainingLoanAmount().call()
     interest = (remaining * LOAN1_RATE) // 100  # rate% of remaining principal
     close_value = remaining + interest
@@ -453,7 +453,7 @@ def main():
     print_applicant_state(w3, applic_labels)
 
     # ── Step 12: failed-loan scenario — proposal + approval ───────────────────
-    banner("Step 12/15 — failed-loan scenario (proposal 2, applicant[1])")
+    banner("Step 12/16 — failed-loan scenario (proposal 2, applicant[1])")
     print(f"  → applicant[1] submitProposal(amount={fmt_eth(LOAN2_AMOUNT)}, rate={LOAN2_RATE}%, "
           f"duration={LOAN2_DURATION}, btcHash)")
     rcpt = send_tx(
@@ -486,7 +486,7 @@ def main():
     print(f"  isExpired: {loan2.functions.isExpired().call()}")
 
     # ── Step 13: requestCompensation ──────────────────────────────────────────
-    banner("Step 13/15 — requestCompensation (contrib[2], largest stake first)")
+    banner("Step 13/16 — requestCompensation (contrib[2], largest stake first)")
     # Pick the contributor that has the largest initialLocked on loan2 for
     # waterfall recovery to be visible.
     claimer = contributors[2]
@@ -510,7 +510,7 @@ def main():
     print_pool_state(pool, "post-comp-claim")
 
     # ── Step 14: late partialRepay ────────────────────────────────────────────
-    banner("Step 14/15 — late partialRepay on Failed loan")
+    banner("Step 14/16 — late partialRepay on Failed loan")
     print(f"  → applicant[1] partialRepay value={fmt_eth(LATE_REPAY)}")
     rcpt = send_tx(w3, a1, loan2.functions.partialRepay(), value=LATE_REPAY, gas=900_000)
     print_events(rcpt, loan2, ["Repayment"])
@@ -521,8 +521,37 @@ def main():
     print_contributor_state(w3, pool, contrib_labels)
     print_pool_state(pool, "post-late-repay")
 
-    # ── Step 15: final state ──────────────────────────────────────────────────
-    banner("Step 15/15 — final state")
+    # ── Step 15: second compensation claim (multi-claim, refilled pool) ──────
+    banner("Step 15/16 — second compensation claim (refilled pool, multi-claim)")
+    pct_before = pool.functions.collateralPercentage().call()
+    comp_pool_before = pool.functions.compensationPool().call()
+    already_before = loan2.functions.alreadyCompensated(claimer.address).call()
+    print(f"  → {claimer.address} requestCompensation()  (second call)")
+    print(f"  pre  alreadyCompensated: {fmt_eth(already_before)}")
+    print(f"  pre  compensationPool:   {fmt_eth(comp_pool_before)}")
+    print(f"  pre  collateralPct:      {pct_before}")
+    rcpt = send_tx(w3, claimer, loan2.functions.requestCompensation(), gas=600_000)
+    print_events(rcpt, loan2, ["CompensationRequested"])
+    marked = parse_events(rcpt, loan2, "MarkedFailed")
+    pct_changed = parse_events(rcpt, pool, "CollateralPercentageChanged")
+    pct_after = pool.functions.collateralPercentage().call()
+    comp_pool_after = pool.functions.compensationPool().call()
+    already_after = loan2.functions.alreadyCompensated(claimer.address).call()
+    paid = already_after - already_before
+    print(f"  MarkedFailed events    : {len(marked)} (expect 0 — loan can be marked failed only once)")
+    print(f"  CollateralPctChanged   : {len(pct_changed)} (expect 0 — pct only bumps on first claim)")
+    print(f"  collateralPercentage   : {pct_before} → {pct_after} (expect unchanged)")
+    print(f"  paid this call         : {fmt_eth(paid)} "
+          f"(capped by compPool {fmt_eth(comp_pool_before)})")
+    print(f"  alreadyCompensated     : {fmt_eth(already_before)} → {fmt_eth(already_after)}")
+    print(f"  compensationPool       : {fmt_eth(comp_pool_before)} → {fmt_eth(comp_pool_after)}")
+    print_loan_state(loan2, "loan2 after 2nd comp claim")
+    section("contributors after 2nd comp claim")
+    print_contributor_state(w3, pool, contrib_labels)
+    print_pool_state(pool, "post-2nd-comp-claim")
+
+    # ── Step 16: final state ──────────────────────────────────────────────────
+    banner("Step 16/16 — final state")
     print_pool_state(pool, "FINAL")
     section("contributors")
     print_contributor_state(w3, pool, contrib_labels)

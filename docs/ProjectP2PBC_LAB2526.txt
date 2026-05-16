@@ -68,7 +68,7 @@ that failed. With the request, the contributor receives from the compensation po
 value as to recoup the value locked by them in the loan not yet repaid by the failed loan
 applicant (interests paid by partially repaid loans are not considered in this computation).
 The contributor may receive less than owed if not enough value is left in the compensation
-pool. This operation can be performed multiple times by the same applicant for the same
+pool. This operation can be performed multiple times by the same contributor for the same
 failed loan to try to recoup value as the compensation pool gets refilled by other loans.
 Asking for a compensation proportionally forfeits the applicant repayments in case the
 applicant later refunds part of the failed loan. A compensation also marks that loan as failed,
