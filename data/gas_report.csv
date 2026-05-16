@@ -1,0 +1,21 @@
+op_name,scenario,gas_used,gas_price_gwei,cost_eth
+deposit,new contributor,141091,1.000000,0.000141091000
+deposit,existing contributor,42421,1.000000,0.000042421000
+withdraw,partial,49984,1.000000,0.000049984000
+requestOracleUpdate,via pool forward,40973,1.000000,0.000040973000
+submitProposal,"valid (amount<=disp, btc ok)",184398,1.000000,0.000184398000
+vote,approve,123903,1.000000,0.000123903000
+vote,reject,59675,1.000000,0.000059675000
+resolveProposal,Approved (N=2),1857149,1.000000,0.001857149000
+resolveProposal,Approved (N=5),2162796,1.000000,0.002162796000
+resolveProposal,Approved (N=10),2678306,1.000000,0.002678306000
+resolveProposal,Rejected (pool low),63139,1.000000,0.000063139000
+resolveProposal,Rejected (btc liquidity),73084,1.000000,0.000073084000
+resolveProposal,Rejected (weighted vote),82345,1.000000,0.000082345000
+partialRepay,mid (no overpay),78805,1.000000,0.000078805000
+partialRepay,close Successful,152272,1.000000,0.000152272000
+partialRepay,overpay (extra interest),155052,1.000000,0.000155052000
+requestCompensation,first call (marks Failed),114994,1.000000,0.000114994000
+requestCompensation,subsequent (refill claim),67444,1.000000,0.000067444000
+partialRepay,on Failed loan (proportional split),147364,1.000000,0.000147364000
+upgradeToAndCall,UUPS v2 swap,37736,1.000000,0.000037736000
