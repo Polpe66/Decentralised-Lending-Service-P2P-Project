@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2026.5.16)  16 MAY 2026 16:25
+This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2026.5.16)  16 MAY 2026 16:34
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -281,24 +281,24 @@ File: l3backend-pdftex.def 2024-01-04 L3 backend support: PDF output (pdfTeX)
 (./report.aux)
 \openout1 = `report.aux'.
 
-LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 25.
-LaTeX Font Info:    ... okay on input line 25.
-LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 25.
-LaTeX Font Info:    ... okay on input line 25.
-LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 25.
-LaTeX Font Info:    ... okay on input line 25.
-LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 25.
-LaTeX Font Info:    ... okay on input line 25.
-LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 25.
-LaTeX Font Info:    ... okay on input line 25.
-LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 25.
-LaTeX Font Info:    ... okay on input line 25.
-LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 25.
-LaTeX Font Info:    ... okay on input line 25.
-LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 25.
-LaTeX Font Info:    ... okay on input line 25.
-LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 25.
-LaTeX Font Info:    ... okay on input line 25.
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 36.
+LaTeX Font Info:    ... okay on input line 36.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 36.
+LaTeX Font Info:    ... okay on input line 36.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 36.
+LaTeX Font Info:    ... okay on input line 36.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 36.
+LaTeX Font Info:    ... okay on input line 36.
+LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 36.
+LaTeX Font Info:    ... okay on input line 36.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 36.
+LaTeX Font Info:    ... okay on input line 36.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 36.
+LaTeX Font Info:    ... okay on input line 36.
+LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 36.
+LaTeX Font Info:    ... okay on input line 36.
+LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 36.
+LaTeX Font Info:    ... okay on input line 36.
 
 *geometry* driver: auto-detecting
 *geometry* detected driver: pdftex
@@ -334,7 +334,7 @@ LaTeX Font Info:    ... okay on input line 25.
 * \@reversemarginfalse
 * (1in=72.27pt=25.4mm, 1cm=28.453pt)
 
-Package hyperref Info: Link coloring OFF on input line 25.
+Package hyperref Info: Link coloring OFF on input line 36.
 (./report.out) (./report.out)
 \@outlinefile=\write3
 \openout3 = `report.out'.
@@ -364,77 +364,71 @@ File: epstopdf-sys.cfg 2010/07/13 v1.3 Configuration of (r)epstopdf for TeX Liv
 e
 ))
 LaTeX Font Info:    External font `cmex10' loaded for size
-(Font)              <12> on input line 27.
+(Font)              <12> on input line 38.
 LaTeX Font Info:    External font `cmex10' loaded for size
-(Font)              <8> on input line 27.
+(Font)              <8> on input line 38.
 LaTeX Font Info:    External font `cmex10' loaded for size
-(Font)              <6> on input line 27.
+(Font)              <6> on input line 38.
 
-Overfull \hbox (10.31079pt too wide) in paragraph at lines 29--30
+Overfull \hbox (10.31079pt too wide) in paragraph at lines 40--41
 \OT1/cmr/bx/n/10.95 Two Con-tracts Ar-chi-tec-ture \OT1/cmr/m/n/10.95 (\OT1/cmt
 t/m/n/10.95 contracts/LendingPool.sol\OT1/cmr/m/n/10.95 , \OT1/cmtt/m/n/10.95 c
 ontracts/LoanContract.sol\OT1/cmr/m/n/10.95 ):
  []
 
 
-Overfull \hbox (21.07007pt too wide) in paragraph at lines 35--36
+Overfull \hbox (21.07007pt too wide) in paragraph at lines 46--47
 \OT1/cmr/m/n/10.95 achieve ex-act re-cov-ery for the comp pool. The gain for-fe
 it uses a con-stant ra-tio (\OT1/cmtt/m/n/10.95 alreadyCompensated
  []
 
 
-Overfull \hbox (28.14333pt too wide) in paragraph at lines 37--38
+Overfull \hbox (28.14333pt too wide) in paragraph at lines 48--49
 []\OT1/cmr/bx/n/10.95 Weighted Vote on Dis-pos-able\OT1/cmr/m/n/10.95 : Vot-ing
  weight is dy-nam-i-cally eval-u-ated as \OT1/cmtt/m/n/10.95 disposableValue(c)
 
  []
 
 
-Overfull \hbox (1.1615pt too wide) in paragraph at lines 39--40
+Overfull \hbox (1.1615pt too wide) in paragraph at lines 50--51
 []\OT1/cmr/bx/n/10.95 Proportional Lock\OT1/cmr/m/n/10.95 : When a loan is ap-p
 roved, locked shares are cal-cu-lated as \OT1/cmtt/m/n/10.95 floor(amount
  []
 
 LaTeX Font Info:    External font `cmex10' loaded for size
-(Font)              <10.95> on input line 47.
+(Font)              <10.95> on input line 58.
 [1
 
 {/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map}]
 LaTeX Font Info:    External font `cmex10' loaded for size
-(Font)              <5> on input line 55.
+(Font)              <5> on input line 66.
 
-Overfull \hbox (6.94359pt too wide) in paragraph at lines 81--84
+Overfull \hbox (6.94359pt too wide) in paragraph at lines 92--95
 []\OT1/cmr/bx/n/10.95 Costliest Op-er-a-tion\OT1/cmr/m/n/10.95 : \OT1/cmtt/m/n/
 10.95 resolveProposal \OT1/cmr/m/n/10.95 (Ap-proved) is the most ex-pen-sive op
 -er-a-tion ($\OMS/cmsy/m/n/10.95 ^^X$\OT1/cmr/m/n/10.95 1.8M
  []
 
 
-Overfull \hbox (90.3082pt too wide) in paragraph at lines 86--87
+Overfull \hbox (90.3082pt too wide) in paragraph at lines 97--98
 \OT1/cmr/m/n/10.95 To demon-strate the vul-ner-a-bil-ity of im-prop-erly or-der
 ed state up-dates, we in-tro-duced \OT1/cmtt/m/n/10.95 LendingPoolVulnerable.so
 l\OT1/cmr/m/n/10.95 . 
  []
 
 LaTeX Font Info:    Font shape `OT1/cmtt/bx/n' in size <10.95> not available
-(Font)              Font shape `OT1/cmtt/m/n' tried instead on input line 88.
-(/usr/share/texlive/texmf-dist/tex/latex/listings/lstlang1.sty
-File: lstlang1.sty 2023/02/27 1.9 listings language file
-)
-(/usr/share/texlive/texmf-dist/tex/latex/listings/lstlang1.sty
-File: lstlang1.sty 2023/02/27 1.9 listings language file
-)
-(/usr/share/texlive/texmf-dist/tex/latex/listings/lstmisc.sty
-File: lstmisc.sty 2023/02/27 1.9 (Carsten Heinz)
-) [2]
-Overfull \hbox (61.01599pt too wide) in paragraph at lines 113--114
+(Font)              Font shape `OT1/cmtt/m/n' tried instead on input line 99.
+LaTeX Font Info:    Font shape `OT1/cmtt/bx/n' in size <8> not available
+(Font)              Font shape `OT1/cmtt/m/n' tried instead on input line 101.
+[2]
+Overfull \hbox (61.01599pt too wide) in paragraph at lines 124--125
 \OT1/cmr/m/n/10.95 defense-in-depth, a man-ual \OT1/cmtt/m/n/10.95 nonReentrant
  \OT1/cmr/m/n/10.95 mu-tex (Open-Zep-pelin v5 re-moved \OT1/cmtt/m/n/10.95 Reen
 trancyGuardUpgradeable\OT1/cmr/m/n/10.95 )
  []
 
 [3]
-Overfull \hbox (10.3996pt too wide) in paragraph at lines 141--145
+Overfull \hbox (10.3996pt too wide) in paragraph at lines 152--156
 \OT1/cmtt/m/n/10.95 geth --datadir chaindata --networkid <id> --http --http.api
  eth,net,web3,personal
  []
@@ -448,31 +442,33 @@ Package rerunfilecheck Info: File `report.out' has not changed.
 (rerunfilecheck)             Checksum: FF9084968CEE856CF504B5B5B9A29C9C;781.
  ) 
 Here is how much of TeX's memory you used:
- 11222 strings out of 476182
- 169535 string characters out of 5795595
+ 11122 strings out of 476182
+ 167956 string characters out of 5795595
  2044975 words of memory out of 5000000
- 33084 multiletter control sequences out of 15000+600000
- 564429 words of font info for 58 fonts, out of 8000000 for 9000
+ 32990 multiletter control sequences out of 15000+600000
+ 564938 words of font info for 60 fonts, out of 8000000 for 9000
  14 hyphenation exceptions out of 8191
- 75i,9n,79p,649b,1277s stack positions out of 10000i,1000n,20000p,200000b,200000s
- </home/francesco/.texlive2023/texmf-var/fonts/pk/ljfour/jknappen/ec/tcrm1200
-.600pk></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb
-></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb></usr
-/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx8.pfb></usr/share/
-texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmitt10.pfb></usr/share/texli
-ve/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></usr/share/texlive/tex
-mf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/share/texlive/texmf-dist
-/fonts/type1/public/amsfonts/cm/cmr12.pfb></usr/share/texlive/texmf-dist/fonts/
-type1/public/amsfonts/cm/cmr17.pfb></usr/share/texlive/texmf-dist/fonts/type1/p
-ublic/amsfonts/cm/cmr8.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/am
-sfonts/cm/cmsy10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts
-/cm/cmsy8.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmt
-i10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt10.pf
-b></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt8.pfb>
-Output written on report.pdf (4 pages, 202932 bytes).
+ 75i,9n,79p,649b,1211s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ </home/francesco/.texlive2023/texmf-var/fonts/pk/ljfour/jknappen/ec/tcrm1095
+.600pk> </home/francesco/.texlive2023/texmf-var/fonts/pk/ljfour/jknappen/ec/tcr
+m1200.600pk></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx1
+0.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb>
+</usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx8.pfb></usr/s
+hare/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmitt10.pfb></usr/share/
+texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></usr/share/texliv
+e/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/share/texlive/texmf
+-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb></usr/share/texlive/texmf-dist/f
+onts/type1/public/amsfonts/cm/cmr17.pfb></usr/share/texlive/texmf-dist/fonts/ty
+pe1/public/amsfonts/cm/cmr8.pfb></usr/share/texlive/texmf-dist/fonts/type1/publ
+ic/amsfonts/cm/cmsy10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/ams
+fonts/cm/cmsy8.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/c
+m/cmti10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt
+10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt8.pfb>
+
+Output written on report.pdf (4 pages, 207574 bytes).
 PDF statistics:
- 144 PDF objects out of 1000 (max. 8388607)
- 107 compressed objects within 2 object streams
+ 149 PDF objects out of 1000 (max. 8388607)
+ 111 compressed objects within 2 object streams
  27 named destinations out of 1000 (max. 500000)
  41 words of extra memory for PDF output out of 10000 (max. 10000000)
 

@@ -11,11 +11,22 @@
 \author{Federico Lombardi and Francesco Polperio}
 \date{\today}
 
+\lstdefinelanguage{Solidity}{
+    keywords={pragma,solidity,contract,interface,library,is,public,private,internal,external,pure,view,payable,returns,return,function,modifier,event,emit,constructor,struct,enum,mapping,address,uint,uint256,uint8,int,bool,bytes,bytes32,string,memory,storage,calldata,if,else,for,while,do,break,continue,require,revert,assert,new,delete,this,super,unchecked,immutable,constant,virtual,override,abstract,using,import},
+    keywordstyle=\color{blue}\bfseries,
+    morecomment=[l]{//},
+    morecomment=[s]{/*}{*/},
+    commentstyle=\color{gray}\itshape,
+    morestring=[b]",
+    stringstyle=\color{red},
+    sensitive=true
+}
 \lstset{
+    language=Solidity,
     basicstyle=\ttfamily\scriptsize,
     breaklines=true,
-    keywordstyle=\color{blue},
-    commentstyle=\color{gray},
+    keywordstyle=\color{blue}\bfseries,
+    commentstyle=\color{gray}\itshape,
     stringstyle=\color{red},
     frame=single,
     xleftmargin=10pt,
@@ -86,7 +97,7 @@ upgradeToAndCall & UUPS v2 swap & 37,736 & 0.000037 \\ \bottomrule
 To demonstrate the vulnerability of improperly ordered state updates, we introduced \texttt{LendingPoolVulnerable.sol}.
 
 \textbf{Vulnerable Code Snippet (\texttt{withdraw})}:
-\begin{lstlisting}[language=C++]
+\begin{lstlisting}
 function withdraw(uint256 amount) external {
     require(disposableValue(msg.sender) >= amount, "Insufficient");
     (bool ok, ) = msg.sender.call{value: amount}(""); // CEI Violation
@@ -99,7 +110,7 @@ function withdraw(uint256 amount) external {
 \end{lstlisting}
 
 \textbf{Attacker Contract Snippet (\texttt{ReentrancyAttacker.sol})}:
-\begin{lstlisting}[language=C++]
+\begin{lstlisting}
 receive() external payable {
     if (attackCount < MAX_REENTRIES && address(pool).balance >= attackAmount) {
         attackCount++;
@@ -147,10 +158,11 @@ Start a geth node initialised from the provided genesis file:\\
 \texttt{python scripts/InitialSetup.py} (Creates accounts, deploys proxy/implementation, funds wallets, saves \texttt{data/*.json}).
 
 \textbf{4. Start Oracle Service}\\
-\texttt{python oracle/oracle\_service.py} (Runs the off-chain oracle. Keep running).
+Export the operator key, then run the off-chain oracle (keep running):\\
+\texttt{export OPERATOR\_PRIVATE\_KEY=0x... \&\& python oracle/oracle\_service.py}
 
 \textbf{5. Run Auto-Voter (Optional)}\\
-\texttt{python scripts/AutoVoter.py} (Automatically votes on proposals based on simple heuristics).
+\texttt{python scripts/AutoVoter.py} (Listens for \texttt{ProposalSubmitted} events and votes \emph{approve} on every new proposal, per spec \S1.5).
 
 \textbf{6. Run Demo}\\
 \texttt{python scripts/DemoOperations.py} (Executes the end-to-end lifecycle of loans).
