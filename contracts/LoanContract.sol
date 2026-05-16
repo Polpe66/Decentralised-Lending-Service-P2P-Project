@@ -442,9 +442,12 @@ contract LoanContract {
             revert("Loan still active");
         }
 
-        // Final sweep for edge-case ETH (e.g., donations to a Successful loan):
-        // route to LendingPool via its receive() fallback. Untracked but parked
-        // in a non-burnable address.
+        // Final sweep for force-sent ETH (selfdestruct of another contract can
+        // deposit ETH here even without a receive() fallback). Routes to
+        // LendingPool via its receive() — untracked, but parked in a
+        // non-burnable address. In the normal flow this block is a no-op:
+        // Failed already forwarded via addToCompensationPool above, Successful
+        // has zero balance after partialRepay's close sweep.
         uint256 bal = address(this).balance;
         if (bal > 0) {
             (bool ok, ) = address(lendingPool).call{value: bal}("");
@@ -508,5 +511,9 @@ contract LoanContract {
         gC = g - gComp;
     }
 
-    receive() external payable {}
+    // No receive()/fallback: all ETH inflows must go through partialRepay
+    // (payable) so every wei is tracked by a state variable. Direct sends
+    // (eth_sendTransaction) and plain call{value: x}("") to the loan revert.
+    // The only residual injection path is selfdestruct from a third contract,
+    // which terminate()'s final sweep handles defensively.
 }

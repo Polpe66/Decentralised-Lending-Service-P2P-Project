@@ -2,7 +2,7 @@
 pragma solidity ^0.8.22;
 
 contract BitcoinOracle {
-    uint256 public constant MIN_ORACLE_FEE = 4569100000000; // 45691 * 0.1 gwei
+    uint256 public constant MIN_ORACLE_FEE = 4566700000000; // 45667 * 0.1 gwei
     uint256 public constant BTC_ETH_RATE = 30;
     uint256 public constant SATOSHI_PER_BTC = 1e8;
 
