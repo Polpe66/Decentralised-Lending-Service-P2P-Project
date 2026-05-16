@@ -1069,31 +1069,24 @@ describe("LoanContract", function () {
             expect(await pool.isActiveLoan(loan.target)).to.be.false;
         });
 
-        it("forwards residual ETH to LendingPool (Failed branch via comp pool)", async function () {
+        it("direct ETH transfers to Failed loan revert (no receive/fallback)", async function () {
             const loan = await makeFailedAllSettled();
-            // Donate dust directly to the loan to simulate stray ETH.
-            await stranger.sendTransaction({
-                to: loan.target,
-                value: 12345n,
-            });
-            const compBefore = await pool.compensationPool();
-            await loan.connect(stranger).terminate();
-            const compAfter = await pool.compensationPool();
-            expect(compAfter - compBefore).to.equal(12345n);
-            // Loan balance drained.
+            await expect(
+                stranger.sendTransaction({
+                    to: loan.target,
+                    value: 12345n,
+                })
+            ).to.be.reverted;
             expect(
                 await ethers.provider.getBalance(loan.target)
             ).to.equal(0n);
         });
 
-        it("Successful path: dust donations forwarded via receive() (untracked)", async function () {
+        it("direct ETH transfers to Successful loan revert (no receive/fallback)", async function () {
             const loan = await makeSuccessful();
-            // Loan is already deregistered → can't use addToCompensationPool.
-            await stranger.sendTransaction({ to: loan.target, value: 777n });
-            const poolEthBefore = await ethers.provider.getBalance(pool.target);
-            await loan.connect(stranger).terminate();
-            const poolEthAfter = await ethers.provider.getBalance(pool.target);
-            expect(poolEthAfter - poolEthBefore).to.equal(777n);
+            await expect(
+                stranger.sendTransaction({ to: loan.target, value: 777n })
+            ).to.be.reverted;
             expect(
                 await ethers.provider.getBalance(loan.target)
             ).to.equal(0n);

@@ -228,21 +228,17 @@ describe("LoanContract — terminate() lifecycle", function () {
 
     // ── residual ETH forwarded back to LendingPool ────────────────────────────
 
-    it("residual ETH at terminate() is forwarded to LendingPool", async function () {
+    it("direct ETH transfers to a closed loan revert (no receive/fallback)", async function () {
         const loan = await setupSuccessfulLoan();
-        // Donate dust to the closed loan via plain ETH transfer.
-        await stranger.sendTransaction({
-            to: loan.target,
-            value: ethers.parseEther("0.01"),
-        });
-        const loanBefore = await ethers.provider.getBalance(loan.target);
-        const poolBefore = await ethers.provider.getBalance(pool.target);
-        expect(loanBefore).to.be.gt(0);
-
-        await loan.connect(stranger).terminate();
-
+        // Invariant: LoanContract has no receive()/fallback, so plain ETH sends
+        // revert. Only partialRepay (payable) and selfdestruct-injection can
+        // deposit ETH. This proves "every wei tracked by state".
+        await expect(
+            stranger.sendTransaction({
+                to: loan.target,
+                value: ethers.parseEther("0.01"),
+            })
+        ).to.be.reverted;
         expect(await ethers.provider.getBalance(loan.target)).to.equal(0);
-        const poolAfter = await ethers.provider.getBalance(pool.target);
-        expect(poolAfter - poolBefore).to.equal(loanBefore);
     });
 });
