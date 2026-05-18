@@ -381,27 +381,6 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
 
     // ── Loan lifecycle hooks (called by registered Loan contracts) ────────────
 
-    function lockValue(
-        address contributor,
-        uint256 amount
-    ) external onlyActiveLoan {
-        require(
-            disposableValue(contributor) >= amount,
-            "Insufficient disposable"
-        );
-        lockedValue[contributor] += amount;
-        totalLocked += amount;
-    }
-
-    function unlockValue(
-        address contributor,
-        uint256 amount
-    ) external onlyActiveLoan {
-        require(lockedValue[contributor] >= amount, "Underflow locked");
-        lockedValue[contributor] -= amount;
-        totalLocked -= amount;
-    }
-
     /// Called by loan on base repayment: unlock contributor share and receive the
     /// corresponding ETH back into the pool (offsets the disbursement at lock time).
     /// deposits[c] is not touched — it was never decremented on lock.

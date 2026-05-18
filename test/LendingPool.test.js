@@ -186,18 +186,6 @@ describe("LendingPool", function () {
             await pool.connect(contributor1).deposit({ value: ONE_ETH });
         });
 
-        it("lockValue reverts from non-loan", async function () {
-            await expect(
-                pool.connect(stranger).lockValue(contributor1.address, MIN_DEPOSIT)
-            ).to.be.revertedWith("Not a registered loan");
-        });
-
-        it("unlockValue reverts from non-loan", async function () {
-            await expect(
-                pool.connect(stranger).unlockValue(contributor1.address, 0n)
-            ).to.be.revertedWith("Not a registered loan");
-        });
-
         it("increaseCollateral reverts from non-loan", async function () {
             await expect(
                 pool.connect(stranger).increaseCollateral()
