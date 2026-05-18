@@ -2,7 +2,6 @@
 pragma solidity ^0.8.22;
 
 interface ILendingPool {
-    function unlockValue(address contributor, uint256 amount) external;
     function repayLockedValue(
         address contributor,
         uint256 amount
