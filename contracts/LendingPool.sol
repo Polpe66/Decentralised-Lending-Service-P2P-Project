@@ -80,10 +80,10 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     }
 
     // come constructor ma nei contratti upgradable
-    function initialize(address _oracle) external initializer {
+    function initialize(address oracleAddr) external initializer {
         __Ownable_init(msg.sender);
         _reentrancyStatus = 1;
-        oracle = IBitcoinOracle(_oracle);
+        oracle = IBitcoinOracle(oracleAddr);
         collateralPercentage = INITIAL_COLLATERAL_PCT;
     }
 
