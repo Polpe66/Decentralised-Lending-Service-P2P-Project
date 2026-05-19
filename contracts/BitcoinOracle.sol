@@ -30,10 +30,7 @@ contract BitcoinOracle {
     }
 
     // Oracle Python chiama questa dopo aver letto i blk.dat
-    function update(
-        bytes32 btcAddressHash,
-        uint256 satoshi
-    ) external onlyOperator {
+    function update(bytes32 btcAddressHash, uint256 satoshi) external onlyOperator {
         balances[btcAddressHash] = satoshi;
         emit BalanceUpdated(btcAddressHash, satoshi);
     }
