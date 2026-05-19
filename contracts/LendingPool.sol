@@ -10,14 +10,13 @@ import "./LoanContract.sol";
 interface IBitcoinOracle {
     function getEthEquivalent(bytes32 btcAddressHash) external view returns (uint256);
     function requestUpdate(bytes32 btcAddressHash) external payable;
-    function MIN_ORACLE_FEE() external view returns (uint256);
+    function MIN_ORACLE_FEE() external view returns (uint256); // getter
 }
 
 contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
-    // manual reentrancy guard (OZ v5 removed ReentrancyGuardUpgradeable)
+    // gurardia manuale per la reentrancy
     uint256 private _reentrancyStatus; // 1 = free, 2 = entered
-    // ── Constants ─────────────────────────────────────────────────────────────
-
+    
     uint256 public constant MIN_DEPOSIT = 100_000; // wei
     uint256 public constant INITIAL_COLLATERAL_PCT = 50;
     uint256 public constant PROPOSAL_VOTING_PERIOD = 12; // blocks
