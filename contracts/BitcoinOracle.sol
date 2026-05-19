@@ -35,9 +35,7 @@ contract BitcoinOracle {
         emit BalanceUpdated(btcAddressHash, satoshi);
     }
 
-    function getBalance(
-        bytes32 btcAddressHash
-    ) external view returns (uint256) {
+    function getBalance(bytes32 btcAddressHash) external view returns (uint256) {
         return balances[btcAddressHash];
     }
 
