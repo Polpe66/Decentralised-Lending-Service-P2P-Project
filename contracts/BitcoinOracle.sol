@@ -11,10 +11,7 @@ contract BitcoinOracle {
     // keccak256(abi.encodePacked(btcAddressString)) => satoshi balance
     mapping(bytes32 => uint256) private balances;
 
-    event UpdateRequested(
-        bytes32 indexed btcAddressHash,
-        address indexed requester
-    );
+    event UpdateRequested(bytes32 indexed btcAddressHash,address indexed requester);
     event BalanceUpdated(bytes32 indexed btcAddressHash, uint256 newBalance);
 
     constructor() {
