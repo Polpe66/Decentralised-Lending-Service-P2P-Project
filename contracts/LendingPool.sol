@@ -8,9 +8,7 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "./LoanContract.sol";
 
 interface IBitcoinOracle {
-    function getEthEquivalent(
-        bytes32 btcAddressHash
-    ) external view returns (uint256);
+    function getEthEquivalent(bytes32 btcAddressHash) external view returns (uint256);
     function requestUpdate(bytes32 btcAddressHash) external payable;
     function MIN_ORACLE_FEE() external view returns (uint256);
 }
