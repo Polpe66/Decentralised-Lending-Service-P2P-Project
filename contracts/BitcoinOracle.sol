@@ -53,19 +53,19 @@ contract BitcoinOracle {
     ) external view returns (uint256) {
         return
             (balances[btcAddressHash] * BTC_ETH_RATE * 1 ether) /
-            SATOSHI_PER_BTC;
+            SATOSHI_PER_BTC; //satoshi * 30 eth *10^18 / 10^8
     }
 
     // utility: hash stringa BTC address → chiave bytes32
     function hashBtcAddress(
         string calldata btcAddress
     ) external pure returns (bytes32) {
-        return keccak256(abi.encodePacked(btcAddress));
+        return keccak256(abi.encodePacked(btcAddress)); //calcola solo hash
     }
 
-    // operator ritira le fee accumulate
+    // operator ritira le fee accumulate, è una cosa inutile ai fini del progetto?
     function withdrawFees() external onlyOperator {
-        (bool ok, ) = operator.call{value: address(this).balance}("");
+        (bool ok, ) = operator.call{value: address(this).balance}(""); //(bool success, bytes memory returnData) = target.call{value: x, gas: y}(payload);
         require(ok, "Withdraw failed");
     }
 }
