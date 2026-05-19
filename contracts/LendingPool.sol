@@ -14,15 +14,13 @@ interface IBitcoinOracle {
 }
 
 contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
-    // gurardia manuale per la reentrancy
+    // guardia manuale per la reentrancy
     uint256 private _reentrancyStatus; // 1 = free, 2 = entered
     
     uint256 public constant MIN_DEPOSIT = 100_000; // wei
     uint256 public constant INITIAL_COLLATERAL_PCT = 50;
-    uint256 public constant PROPOSAL_VOTING_PERIOD = 12; // blocks
+    uint256 public constant PROPOSAL_VOTING_PERIOD = 12;
     uint256 public constant COLLATERAL_STEP = 5;
-
-    // ── State ─────────────────────────────────────────────────────────────────
 
     IBitcoinOracle public oracle;
 
