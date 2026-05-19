@@ -48,9 +48,9 @@ contract BitcoinOracle {
         return keccak256(abi.encodePacked(btcAddress)); //calcola solo hash
     }
 
-    // operator ritira le fee accumulate, è una cosa inutile ai fini del progetto?
+    // questa funzione permette a operator di ritirare le fee accumulate
     function withdrawFees() external onlyOperator {
-        (bool ok, ) = operator.call{value: address(this).balance}(""); //(bool success, bytes memory returnData) = target.call{value: x, gas: y}(payload);
+        (bool ok, ) = operator.call{value: address(this).balance}(""); // (bool success, bytes memory returnData) = target.call{value: x, gas: y}(payload);
         require(ok, "Withdraw failed");
     }
 }
