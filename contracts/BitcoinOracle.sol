@@ -23,7 +23,7 @@ contract BitcoinOracle {
         _;
     }
 
-    // Borrower paga la fee → oracle Python ascolta l'evento e aggiorna il saldo
+    // Borrower paga la fee -> oracle Python ascolta l'evento e aggiorna il saldo
     function requestUpdate(bytes32 btcAddressHash) external payable {
         require(msg.value >= MIN_ORACLE_FEE, "Fee too low");
         emit UpdateRequested(btcAddressHash, msg.sender);
