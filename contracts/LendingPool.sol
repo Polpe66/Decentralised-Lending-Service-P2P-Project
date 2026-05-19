@@ -72,6 +72,8 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     event ProposalApproved(uint256 indexed proposalId, address indexed loanContract, uint256 loanedAmount);
     event ProposalRejected(uint256 indexed proposalId);
 
+
+    // blocca `initialize()` sull'implementation, lasciandola chiamabile solo via proxy.
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
