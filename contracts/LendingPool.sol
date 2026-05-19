@@ -100,6 +100,9 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         _;
     }
 
+
+    //ARRIVATI QUA
+
     // ── Views ─────────────────────────────────────────────────────────────────
 
     /// ETH not locked in any loan for this contributor
