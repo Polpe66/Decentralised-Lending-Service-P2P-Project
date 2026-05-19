@@ -39,12 +39,11 @@ contract BitcoinOracle {
         return balances[btcAddressHash];
     }
 
-    // satoshi * 30 ETH / 1e8 → wei equivalent
     function getEthEquivalent(bytes32 btcAddressHash) external view returns (uint256) {
         return (balances[btcAddressHash] * BTC_ETH_RATE * 1 ether) / SATOSHI_PER_BTC; //satoshi * 30 eth *10^18 / 10^8
     }
 
-    // utility: hash stringa BTC address → chiave bytes32
+    // funzione che calcola l'hash di una stringa del BTC address -> chiave bytes32
     function hashBtcAddress(string calldata btcAddress) external pure returns (bytes32) {
         return keccak256(abi.encodePacked(btcAddress)); //calcola solo hash
     }
