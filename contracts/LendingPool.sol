@@ -79,6 +79,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         _disableInitializers();
     }
 
+    // come constructor ma nei contratti upgradable
     function initialize(address _oracle) external initializer {
         __Ownable_init(msg.sender);
         _reentrancyStatus = 1;
@@ -86,7 +87,6 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         collateralPercentage = INITIAL_COLLATERAL_PCT;
     }
 
-    // ── Modifiers ─────────────────────────────────────────────────────────────
 
     modifier nonReentrant() {
         require(_reentrancyStatus != 2, "Reentrant call");
