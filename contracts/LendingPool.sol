@@ -24,17 +24,16 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
 
     IBitcoinOracle public oracle;
 
-    uint256 public totalFundingPool; // sum of all deposits (including locked)
-    uint256 public totalLocked; // sum of all lockedValue across contributors
-    uint256 public compensationPool; // separate compensation pool balance
+    uint256 public totalFundingPool;
+    uint256 public totalLocked; 
+    uint256 public compensationPool; 
     uint256 public collateralPercentage;
 
-    mapping(address => uint256) public deposits; // deposited (including locked)
-    mapping(address => uint256) public lockedValue; // locked in active loans
+    mapping(address => uint256) public deposits; // ether depositati (inclusi i locked)
+    mapping(address => uint256) public lockedValue; // solo ether locked
+    mapping(address => bool) public isActiveLoan; // loan attivi
 
-    mapping(address => bool) public isActiveLoan; // registered loan contracts
-
-    // ── Proposal state ────────────────────────────────────────────────────────
+   
 
     enum ProposalStatus {
         Active,
@@ -46,47 +45,32 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         address applicant;
         uint256 amount;
         uint8 interestRate; // 1-100
-        uint256 duration; // blocks
-        bytes32 btcAddressHash;
+        uint256 duration; // durata prestito
+        bytes32 btcAddressHash; // indirizzo btc hashato per verificare liquidità
         uint256 submittedBlock;
         ProposalStatus status;
-        address[] approveVoters;
+        address[] approveVoters; // array di indirizzi che hanno votato true, è iterabile
         mapping(address => bool) hasVoted;
-        mapping(address => bool) voteApprove;
+        mapping(address => bool) voteApprove; // struttura dati che indica cosa è stato votato per ciascun indirizzo, non iterabile
     }
 
-    uint256 public proposalCount;
-    mapping(uint256 => Proposal) internal _proposals;
+    uint256 public proposalCount; // id proposte
+    mapping(uint256 => Proposal) internal _proposals; // internal -> no getter automatico, fornito da noi
 
-    // ordered list of all addresses that have ever deposited — used in resolveProposal
+    // lista ordianta dei contributor
     address[] private _contributorList;
     mapping(address => bool) private _contributorTracked;
 
-    // ── Events ────────────────────────────────────────────────────────────────
 
     event Deposited(address indexed contributor, uint256 amount);
     event Withdrawn(address indexed contributor, uint256 amount);
     event LoanRegistered(address indexed loanContract);
-    event LoanDeregistered(address indexed loanContract);
+    event LoanDeregistered(address indexed loanContract); // loan chiuso o in situazioni eccezionali(bug) chiamato dall'owner
     event CollateralPercentageChanged(uint256 newValue);
-    event ProposalSubmitted(
-        uint256 indexed proposalId,
-        address indexed applicant,
-        uint256 amount
-    );
-    event ProposalVoted(
-        uint256 indexed proposalId,
-        address indexed voter,
-        bool approve
-    );
-    event ProposalApproved(
-        uint256 indexed proposalId,
-        address indexed loanContract,
-        uint256 loanedAmount
-    );
+    event ProposalSubmitted(uint256 indexed proposalId, address indexed applicant, uint256 amount);
+    event ProposalVoted(uint256 indexed proposalId, address indexed voter, bool approve);
+    event ProposalApproved(uint256 indexed proposalId, address indexed loanContract, uint256 loanedAmount);
     event ProposalRejected(uint256 indexed proposalId);
-
-    // ── Constructor / Initializer ─────────────────────────────────────────────
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -449,7 +433,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         emit LoanRegistered(loanContract);
     }
 
-    function deregisterLoan(address loanContract) external onlyOwner {
+    function deregisterLoan(address loanContract) external onlyOwner { 
         isActiveLoan[loanContract] = false;
         emit LoanDeregistered(loanContract);
     }
