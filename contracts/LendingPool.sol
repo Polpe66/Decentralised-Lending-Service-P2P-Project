@@ -266,16 +266,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
             finalShares[i] = shares[i];
         }
 
-        address loanAddr = address(
-            new LoanContract{value: loanedAmount}(
-                p.applicant,
-                loanedAmount,
-                collateralPercentage,
-                block.number + p.duration,
-                finalAddrs,
-                finalShares
-            )
-        );
+        address loanAddr = address(new LoanContract{value: loanedAmount}(p.applicant, loanedAmount, collateralPercentage, block.number + p.duration, finalAddrs,finalShares));
         isActiveLoan[loanAddr] = true;
         emit LoanRegistered(loanAddr);
         emit ProposalApproved(proposalId, loanAddr, loanedAmount);
