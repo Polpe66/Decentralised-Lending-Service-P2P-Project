@@ -101,14 +101,9 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     }
 
 
-    //ARRIVATI QUA
 
-    // ── Views ─────────────────────────────────────────────────────────────────
-
-    /// ETH not locked in any loan for this contributor
-    function disposableValue(
-        address contributor
-    ) public view returns (uint256) {
+    // ETH not locked in any loan for this contributor
+    function disposableValue(address contributor) public view returns (uint256) {
         return deposits[contributor] - lockedValue[contributor];
     }
 
