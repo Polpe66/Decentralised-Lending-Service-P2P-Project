@@ -187,19 +187,14 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         return (p.applicant, p.amount, p.interestRate, p.duration, p.btcAddressHash, p.submittedBlock, p.approveVoters.length, p.status);
     }
 
-    function hasVotedOn(uint256 proposalId, address voter) external view returns (bool) {
+    function hasVotedOn(uint256 proposalId, address voter) external view returns (bool) { // usata in autovoter per verificare se ha già votato
         return _proposals[proposalId].hasVoted[voter];
     }
 
-    function getVoteApprove(
-        uint256 proposalId,
-        address voter
-    ) external view returns (bool) {
+    function getVoteApprove(uint256 proposalId, address voter) external view returns (bool) { // usata nei test per verificare che il voto è stato registrato correttamente
         return _proposals[proposalId].voteApprove[voter];
     }
-
-    // ── Proposal resolution ───────────────────────────────────────────────────
-
+//ARRIVATI A QUESTO PUNTO:
     function resolveProposal(uint256 proposalId) external nonReentrant {
         Proposal storage p = _proposals[proposalId];
         require(p.applicant != address(0), "Proposal does not exist");
