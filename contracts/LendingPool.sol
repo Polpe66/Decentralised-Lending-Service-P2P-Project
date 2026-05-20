@@ -306,12 +306,10 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         compensationPool += msg.value;
     }
 
-    // Fermati qua
 
-    function compensateFromPool(address contributor, uint256 amount) external onlyActiveLoan nonReentrant {
+    function compensateFromPool(address contributor, uint256 amount) external onlyActiveLoan nonReentrant { // chiamata in caso di fallimento del loan
         require(amount > 0, "Zero amount");
         require(amount <= compensationPool, "Exceeds comp pool");
-        require(deposits[contributor] >= amount, "Underflow deposit");
         require(lockedValue[contributor] >= amount, "Underflow locked");
 
         compensationPool -= amount;
