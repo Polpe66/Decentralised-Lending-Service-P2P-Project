@@ -152,7 +152,7 @@ contract LoanContract {
             }
         }
 
-        uint256 collateralAmount = (interest * collateralPercentage) / 100;
+        uint256 collateralAmount = (interest * collateralPercentage) / 100; // interesse che copre il collaterale
         uint256 gain = interest - collateralAmount;
 
         uint256 gainDistributed = 0;
@@ -160,17 +160,17 @@ contract LoanContract {
         if (gain > 0) {
             for (uint256 i = 0; i < n; i++) {
                 Contributor memory c = contributors[i];
-                uint256 g = (gain * c.initialLocked) / totalInitialLocked;
+                uint256 g = (gain * c.initialLocked) / totalInitialLocked; // quota di gain spettante a c, proporzionale al suo contributo iniziale
                 if (g == 0) continue;
                 gainDistributed += g;
                 (uint256 gComp, uint256 gC) = _splitGainForfeit(c.addr, g);
-                if (gComp > 0) gainToComp += gComp;
-                if (gC > 0) lendingPool.creditInterest{value: gC}(c.addr);
+                if (gComp > 0) gainToComp += gComp; // tutti i valori di gain che vanno alla comp pool in questo ciclo vengono accumulati in gainToComp e poi trasferiti in un'unica chiamata a fine ciclo, per ottimizzare le chiamate esterne al pool
+                if (gC > 0) lendingPool.creditInterest{value: gC}(c.addr); // accredito dell'interesse al contributor c tramite creditInterest del pool
             }
         }
-        uint256 gainLeftover = gain - gainDistributed;
+        uint256 gainLeftover = gain - gainDistributed; 
 
-        // Step 4 — Update remaining and close if fully repaid.
+
         remainingLoanAmount -= baseAmount;
 
         uint256 toComp = collateralAmount + gainLeftover + baseToComp + gainToComp;
@@ -355,15 +355,6 @@ contract LoanContract {
         emit LoanTerminated(address(this));
     }
 
-    /// Forfeit split for a **base** waterfall slice going to contributor `c`.
-    /// toComp = floor(share × outstanding / remainingShare), where
-    ///   outstanding    = alreadyCompensated[c] − compRecovered[c]  (pool's claim)
-    ///   remainingShare = initialLockedOf[c] − unlockedSoFar[c] − compRecovered[c]
-    /// In the waterfall loop `share` ≤ `remainingShare` by construction (take =
-    /// min(baseRemaining, capacity), capacity == remainingShare), so toComp ≤
-    /// outstanding always holds and the cap is defensive only. When `share` ==
-    /// `remainingShare` (saturation) the floor is exact: toComp = outstanding,
-    /// recovering the full advance for the comp pool in that single call.
     function _splitBaseForfeit(address c, uint256 share) internal view returns (uint256 toComp, uint256 toC) {
         uint256 outstanding = alreadyCompensated[c] - compRecovered[c];
         if (outstanding == 0) {
@@ -380,29 +371,17 @@ contract LoanContract {
         toC = share - toComp;
     }
 
-    /// Proportional forfeit split for a **gain** share going to contributor `c`.
-    /// gComp = floor(g × alreadyCompensated / initialLocked) — constant ratio
-    /// equal to the contributor's compensation fraction. Comp pool earns this
-    /// slice of every gain credit reflecting the risk it absorbed.
-    /// Differs from base in two ways: (1) ratio uses cumulative alreadyCompensated
-    /// rather than dynamic outstanding (gain doesn't recover the advance);
-    /// (2) no outstanding cap — a large interest payment legitimately yields a
-    /// gain forfeit greater than outstanding (the cap there would silently
-    /// short-change the comp pool on its proportional bonus).
     function _splitGainForfeit(address c, uint256 g) internal view returns (uint256 gComp, uint256 gC) {
         uint256 ac = alreadyCompensated[c];
         if (ac == 0) {
             return (0, g);
         }
-        uint256 il = initialLockedOf[c];
-        gComp = (g * ac) / il;
-        if (gComp > g) gComp = g; // safety; ratio ≤ 1 since ac ≤ il.
+
+        // caso ac>0
+        uint256 il = initialLockedOf[c]; // il è la variabile locale che contiene initialLockedOf[c] per comodità di lettura
+        gComp = (g * ac) / il; // la quota di gain che va alla comp pool è proporzionale alla quota di lockedValue che è stata compensata (ac) rispetto al contributo iniziale (il)
+        if (gComp > g) gComp = g; // la quota di gain che va alla comp pool non può essere maggiore del gain totale da distribuire
         gC = g - gComp;
     }
 
-    // No receive()/fallback: all ETH inflows must go through partialRepay
-    // (payable) so every wei is tracked by a state variable. Direct sends
-    // (eth_sendTransaction) and plain call{value: x}("") to the loan revert.
-    // The only residual injection path is selfdestruct from a third contract,
-    // which terminate()'s final sweep handles defensively.
 }
