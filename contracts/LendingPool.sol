@@ -287,7 +287,8 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
             shares[j] = s;
         }
     }
-
+    
+    // funzione chiamata dal LoanContract
     function repayLockedValue(address contributor, uint256 amount) external payable onlyActiveLoan {
         require(msg.value == amount, "Value mismatch");
         require(lockedValue[contributor] >= amount, "Underflow locked");
@@ -295,7 +296,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         totalLocked -= amount;
     }
 
-    /// Called by loan on interest distribution: forward msg.value directly to contributor
+    // interesse trasferito dal LoanContract al contributor
     function creditInterest(address contributor) external payable onlyActiveLoan {
         (bool ok, ) = contributor.call{value: msg.value}("");
         require(ok, "Interest transfer failed");
@@ -305,19 +306,9 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         compensationPool += msg.value;
     }
 
-    /// Drain `amount` from the compensation pool and pay it to `contributor` as
-    /// compensation for value lost in a failed loan. Caller is responsible for
-    /// passing `amount = min(owed, compensationPool)` — this function reverts on
-    /// overdraw to make the CEI invariant in LoanContract explicit.
-    ///
-    /// Side effects: reduces contributor's funding-pool position
-    /// (deposits + lockedValue) by `amount`. The compensated portion is
-    /// "closed out" from the funding pool — it was lost to the failed loan and
-    /// has now been replaced via the compensation pool.
-    function compensateFromPool(
-        address contributor,
-        uint256 amount
-    ) external onlyActiveLoan nonReentrant {
+    // Fermati qua
+
+    function compensateFromPool(address contributor, uint256 amount) external onlyActiveLoan nonReentrant {
         require(amount > 0, "Zero amount");
         require(amount <= compensationPool, "Exceeds comp pool");
         require(deposits[contributor] >= amount, "Underflow deposit");
