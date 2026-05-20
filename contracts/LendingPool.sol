@@ -194,27 +194,24 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     function getVoteApprove(uint256 proposalId, address voter) external view returns (bool) { // usata nei test per verificare che il voto è stato registrato correttamente
         return _proposals[proposalId].voteApprove[voter];
     }
-//ARRIVATI A QUESTO PUNTO:
-    function resolveProposal(uint256 proposalId) external nonReentrant {
-        Proposal storage p = _proposals[proposalId];
+
+    function resolveProposal(uint256 proposalId) external nonReentrant { // 
+        Proposal storage p = _proposals[proposalId]; 
         require(p.applicant != address(0), "Proposal does not exist");
         require(p.applicant == msg.sender, "Not applicant");
         require(p.status == ProposalStatus.Active, "Proposal not active");
-        require(
-            block.number > p.submittedBlock + PROPOSAL_VOTING_PERIOD,
-            "Voting period not over"
-        );
+        require(block.number > p.submittedBlock + PROPOSAL_VOTING_PERIOD,"Voting period not over"); // si può risolvere solo dopo 12 blocchi
 
-        uint256 totalDisp = totalDisposable();
-
-        // Early rejection: pool has insufficient disposable liquidity
+        uint256 totalDisp = totalDisposable(); // fondi totali - fondi bloccati
+        
+        // rifiuto per insufficienza di fondi
         if (totalDisp < p.amount) {
             p.status = ProposalStatus.Rejected;
             emit ProposalRejected(proposalId);
             return;
         }
 
-        // Early rejection: BTC liquidity check (oracle ETH equivalent < loan amount)
+        // rifiuto per insufficienza di liquidità BTC
         uint256 btcEth = oracle.getEthEquivalent(p.btcAddressHash);
         if (btcEth < p.amount) {
             p.status = ProposalStatus.Rejected;
@@ -222,55 +219,49 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
             return;
         }
 
-        // Weighted vote count.
-        // Non-voters are implicit NO → weightedNo = totalDisp - weightedYes.
-        // Approved only if weightedYes > weightedNo (strict; tie → rejected).
         uint256 weightedYes = 0;
         for (uint256 i = 0; i < p.approveVoters.length; i++) {
-            weightedYes += disposableValue(p.approveVoters[i]);
+            weightedYes += disposableValue(p.approveVoters[i]); //somma fondi disponibili di chi ha votato sì
         }
-        if (weightedYes * 2 <= totalDisp) {
+        if (weightedYes * 2 <= totalDisp) { // somma fondi deve essere maggiore della metà dei fondi disponibili totali (51%)
             p.status = ProposalStatus.Rejected;
             emit ProposalRejected(proposalId);
             return;
         }
+        p.status = ProposalStatus.Approved; // se supera tutte le condizioni, la proposta è approvata
 
-        // Approved: lock funds proportionally from all contributors with disposable > 0.
-        // share_i = floor(amount × disposable_i / totalDisp)
-        // loanedAmount = sum(share_i) ≤ amount  (integer leftover deducted, not credited)
-        p.status = ProposalStatus.Approved;
+        uint256 n = _contributorList.length; // numero di contributors 
 
-        uint256 n = _contributorList.length;
-        address[] memory addrs = new address[](n);
-        uint256[] memory shares = new uint256[](n);
-        uint256 count = 0;
-        uint256 loanedAmount = 0;
+        address[] memory addrs = new address[](n); // array dinamico di dimensione massima n (tutti i contributors), compattato da count per passarlo al LoanContract
+        uint256[] memory shares = new uint256[](n); // array dinamico di dimensione massima n (tutti i contributors), compattato da count per passarlo al LoanContract
+        uint256 count = 0; // contatore di quanti contributors effettivamente partecipano al prestito (share > 0)
+        uint256 loanedAmount = 0; // somma di tutti gli share, dovrebbe essere uguale a p.amount 
 
-        for (uint256 i = 0; i < n; i++) {
+        for (uint256 i = 0; i < n; i++) { 
             address c = _contributorList[i];
             uint256 disp = disposableValue(c);
-            if (disp == 0) continue;
+            if (disp == 0) continue; // contributor senza fondi disponibili, skip per risparmiare gas
             uint256 share = (p.amount * disp) / totalDisp;
-            if (share == 0) continue; // floor rounded to zero — skip to save gas
+            if (share == 0) continue; // share zero dopo arrotondamento, skip per risparmiare gas
             addrs[count] = c;
             shares[count] = share;
             loanedAmount += share;
             count++;
         }
 
-        // Sort DESC by share, tie-break ASC by address — LoanContract uses this order for repayments
+       // ordinamento dei contributor per share decrescente (e tie-break per indirizzo) per ottimizzare i rimborsi e le compensazioni in caso di prestiti falliti
         _sortContributors(addrs, shares, count);
 
-        // Apply locks (share ≤ disposable_i is guaranteed since amount ≤ totalDisp)
+        // aggiornamento stato del pool: blocco dei fondi (lockedValue) e riduzione dei fondi disponibili (totalLocked)
         for (uint256 i = 0; i < count; i++) {
             lockedValue[addrs[i]] += shares[i];
         }
         totalLocked += loanedAmount;
 
-        // Trim sorted arrays to actual length before passing to LoanContract.
+        // trimming degli array a misura di count per passaggio al LoanContract
         address[] memory finalAddrs = new address[](count);
         uint256[] memory finalShares = new uint256[](count);
-        for (uint256 i = 0; i < count; i++) {
+        for (uint256 i = 0; i < count; i++) { // copia dei primi count elementi da addrs/shares a finalAddrs/finalShares per risparmiare gas al passaggio al LoanContract
             finalAddrs[i] = addrs[i];
             finalShares[i] = shares[i];
         }
