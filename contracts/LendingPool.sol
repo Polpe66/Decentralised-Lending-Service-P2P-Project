@@ -57,8 +57,9 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     uint256 public proposalCount; // id proposte
     mapping(uint256 => Proposal) internal _proposals; // internal -> no getter automatico, fornito da noi
 
-    // lista ordianta dei contributor
+    // lista ordinata dei contributor
     address[] private _contributorList;
+    // flag anti-duplicati in _contributorList
     mapping(address => bool) private _contributorTracked;
 
 
@@ -102,24 +103,22 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
 
 
 
-    // ETH not locked in any loan for this contributor
+    //  ether dispinibili di un contributor specifico
     function disposableValue(address contributor) public view returns (uint256) {
         return deposits[contributor] - lockedValue[contributor];
     }
 
-    /// Total ETH in the pool available to back new loans
+    // fondi totali disponibili
     function totalDisposable() public view returns (uint256) {
         return totalFundingPool - totalLocked;
     }
 
-    /// True if contributor has any funds (including locked)
     function isContributor(address addr) public view returns (bool) {
         return deposits[addr] > 0;
     }
 
-    // ── Contributor operations ────────────────────────────────────────────────
-
-    function deposit() external payable nonReentrant {
+    // funzione di deposito
+    function deposit() external payable { 
         require(msg.value >= MIN_DEPOSIT, "Below min deposit");
         if (!_contributorTracked[msg.sender]) {
             _contributorTracked[msg.sender] = true;
@@ -130,13 +129,11 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         emit Deposited(msg.sender, msg.value);
     }
 
+    // funzione di prelievo
     function withdraw(uint256 amount) external nonReentrant {
         require(amount > 0, "Zero amount");
-        require(
-            disposableValue(msg.sender) >= amount,
-            "Insufficient disposable"
-        );
-        // checks-effects-interactions
+        require(disposableValue(msg.sender) >= amount, "Insufficient disposable");
+
         deposits[msg.sender] -= amount;
         totalFundingPool -= amount;
         (bool ok, ) = msg.sender.call{value: amount}("");
@@ -144,84 +141,50 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         emit Withdrawn(msg.sender, amount);
     }
 
-    // ── Oracle interaction ────────────────────────────────────────────────────
-
-    /// Forward BTC address update request to oracle; caller pays fee
+     // interazione con oracle 
     function requestOracleUpdate(bytes32 btcAddressHash) external payable {
         uint256 fee = oracle.MIN_ORACLE_FEE();
         require(msg.value >= fee, "Fee too low");
         oracle.requestUpdate{value: msg.value}(btcAddressHash);
     }
 
-    // ── Proposal system ───────────────────────────────────────────────────────
-
-    function submitProposal(
-        uint256 amount,
-        uint8 interestRate,
-        uint256 duration,
-        bytes32 btcAddressHash
-    ) external returns (uint256 proposalId) {
+    function submitProposal(uint256 amount, uint8 interestRate, uint256 duration, bytes32 btcAddressHash) external returns (uint256 proposalId) {
         require(amount > 0, "Zero amount");
         require(interestRate >= 1 && interestRate <= 100, "Rate out of range");
         require(duration > 0, "Zero duration");
 
-        proposalId = proposalCount++;
-        Proposal storage p = _proposals[proposalId];
+        proposalId = proposalCount++; //id incrementale
+        Proposal storage p = _proposals[proposalId]; // puntatore a p 
         p.applicant = msg.sender;
         p.amount = amount;
         p.interestRate = interestRate;
         p.duration = duration;
         p.btcAddressHash = btcAddressHash;
-        p.submittedBlock = block.number;
+        p.submittedBlock = block.number; // block.number variabile globale
 
         emit ProposalSubmitted(proposalId, msg.sender, amount);
     }
 
     function vote(uint256 proposalId, bool approve) external {
         Proposal storage p = _proposals[proposalId];
-        require(p.applicant != address(0), "Proposal does not exist");
+        require(p.applicant != address(0), "Proposal does not exist"); // address(0) indica indirizzo non inizializzato
         require(p.status == ProposalStatus.Active, "Proposal not active");
         require(isContributor(msg.sender), "Not a contributor");
         require(!p.hasVoted[msg.sender], "Already voted");
 
-        p.hasVoted[msg.sender] = true;
+        p.hasVoted[msg.sender] = true; // indichiamo che ha votato
         p.voteApprove[msg.sender] = approve;
-        if (approve) {
+        if (approve) { // array salva solo contriburs che hanno votato si
             p.approveVoters.push(msg.sender);
         }
 
         emit ProposalVoted(proposalId, msg.sender, approve);
     }
 
-    // ── Proposal views ────────────────────────────────────────────────────────
 
-    function getProposal(
-        uint256 proposalId
-    )
-        external
-        view
-        returns (
-            address applicant,
-            uint256 amount,
-            uint8 interestRate,
-            uint256 duration,
-            bytes32 btcAddressHash,
-            uint256 submittedBlock,
-            uint256 approveVoterCount,
-            ProposalStatus status
-        )
-    {
+    function getProposal(uint256 proposalId) external view returns (address applicant, uint256 amount, uint8 interestRate, uint256 duration, bytes32 btcAddressHash, uint256 submittedBlock, uint256 approveVoterCount, ProposalStatus status) {
         Proposal storage p = _proposals[proposalId];
-        return (
-            p.applicant,
-            p.amount,
-            p.interestRate,
-            p.duration,
-            p.btcAddressHash,
-            p.submittedBlock,
-            p.approveVoters.length,
-            p.status
-        );
+        return (p.applicant, p.amount, p.interestRate, p.duration, p.btcAddressHash, p.submittedBlock, p.approveVoters.length, p.status);
     }
 
     function hasVotedOn(
