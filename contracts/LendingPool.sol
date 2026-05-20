@@ -249,7 +249,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
             count++;
         }
 
-       // ordinamento dei contributor per share decrescente (e tie-break per indirizzo) per ottimizzare i rimborsi e le compensazioni in caso di prestiti falliti
+       // ordinamento dei contributor per share decrescente (e tie-break per indirizzo) per ottimizzare i rimborsi
         _sortContributors(addrs, shares, count);
 
         // aggiornamento stato del pool: blocco dei fondi (lockedValue) e riduzione dei fondi disponibili (totalLocked)
@@ -266,26 +266,19 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
             finalShares[i] = shares[i];
         }
 
-        address loanAddr = address(new LoanContract{value: loanedAmount}(p.applicant, loanedAmount, collateralPercentage, block.number + p.duration, finalAddrs,finalShares));
+        address loanAddr = address(new LoanContract{value: loanedAmount}(p.applicant, loanedAmount, collateralPercentage, block.number + p.duration, finalAddrs,finalShares)); // creazione del LoanContract con i fondi del prestito, il costruttore è payable e riceve i fondi direttamente da questo contract, il cast a address è necessario per passare l'indirizzo del nuovo contratto alla mappa isActiveLoan
         isActiveLoan[loanAddr] = true;
         emit LoanRegistered(loanAddr);
         emit ProposalApproved(proposalId, loanAddr, loanedAmount);
     }
 
-    // Insertion sort: DESC by share, tie-break ASC by address (cheaper than quicksort for small N)
-    function _sortContributors(
-        address[] memory addrs,
-        uint256[] memory shares,
-        uint256 count
-    ) internal pure {
+   // insertion sort O(n^2), non il migliore ma efficiente e più semplice per n piccoli
+    function _sortContributors(address[] memory addrs, uint256[] memory shares, uint256 count) internal pure {
         for (uint256 i = 1; i < count; i++) {
             address a = addrs[i];
             uint256 s = shares[i];
             uint256 j = i;
-            while (
-                j > 0 &&
-                (shares[j - 1] < s || (shares[j - 1] == s && addrs[j - 1] > a))
-            ) {
+            while (j > 0 && (shares[j - 1] < s || (shares[j - 1] == s && addrs[j - 1] > a))) {
                 addrs[j] = addrs[j - 1];
                 shares[j] = shares[j - 1];
                 j--;
@@ -295,15 +288,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         }
     }
 
-    // ── Loan lifecycle hooks (called by registered Loan contracts) ────────────
-
-    /// Called by loan on base repayment: unlock contributor share and receive the
-    /// corresponding ETH back into the pool (offsets the disbursement at lock time).
-    /// deposits[c] is not touched — it was never decremented on lock.
-    function repayLockedValue(
-        address contributor,
-        uint256 amount
-    ) external payable onlyActiveLoan {
+    function repayLockedValue(address contributor, uint256 amount) external payable onlyActiveLoan {
         require(msg.value == amount, "Value mismatch");
         require(lockedValue[contributor] >= amount, "Underflow locked");
         lockedValue[contributor] -= amount;
