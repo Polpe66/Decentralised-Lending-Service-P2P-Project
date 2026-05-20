@@ -343,6 +343,6 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     // UUPS
     function _authorizeUpgrade(address) internal override onlyOwner {}
 
-    
+    // evita griefing da parte di attaccanti
     receive() external payable {}
 }

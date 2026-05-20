@@ -12,12 +12,8 @@ interface ILendingPool {
     function compensationPool() external view returns (uint256);
 }
 
-/// Standalone contract deployed by LendingPool when a proposal is approved [R2].
-/// Holds all repayment logic for a single loan. Capital repayment follows the
-/// spec waterfall: contributors are saturated one at a time in DESC initialLocked
-/// order (tie-break ASC by address) — the largest contributor must be made whole
-/// before any wei flows to the next. Interest distribution stays proportional.
 contract LoanContract {
+
     enum Status {
         Active,
         Failed,
@@ -26,48 +22,35 @@ contract LoanContract {
 
     struct Contributor {
         address addr;
-        uint256 initialLocked;
+        uint256 initialLocked; // fondi bloccati al momento della creazione del loanContract
     }
 
     address public immutable applicant;
     uint256 public immutable loanedAmount;
-    uint256 public immutable collateralPercentage; // frozen snapshot at creation
+    uint256 public immutable collateralPercentage;
     uint256 public immutable expiryBlock;
-    ILendingPool public immutable lendingPool;
+    ILendingPool public immutable lendingPool; // riferimento al LendingPool
 
     Contributor[] public contributors;
-    uint256 public totalInitialLocked;
-    mapping(address => uint256) public unlockedSoFar;
-    /// O(1) lookup: contributor address -> initialLocked. Zero means "not a contributor on this loan".
-    mapping(address => uint256) public initialLockedOf;
+    uint256 public totalInitialLocked; // somma di initialLocked di tutti i contributor, usata per split proporzionali
+    mapping(address => uint256) public unlockedSoFar; // fondi sbloccati per ciascun contributor
+    
+    mapping(address => uint256) public initialLockedOf; // fondi bloccati da ciascun contributor al momento della creazione del loanContract, rimane invariato
 
-    /// Cumulative compensation paid to a contributor from the compensation pool for this
-    /// loan. Monotonically increasing — used in `owed` calculation (initialLocked
-    /// minus everything c has received from any source).
-    mapping(address => uint256) public alreadyCompensated;
-    /// Cumulative portion of `alreadyCompensated[c]` that has been recovered from
-    /// applicant's later repayments (routed back to the compensation pool). Per spec,
-    /// claiming compensation **proportionally** forfeits the contributor's future
-    /// repayment shares: a fraction equal to (outstanding / remaining-share) of each
-    /// share is sent back to the compensation pool until the advance is recovered.
-    /// Outstanding claim by the comp pool = alreadyCompensated[c] - compRecovered[c].
-    mapping(address => uint256) public compRecovered;
+    mapping(address => uint256) public alreadyCompensated; // fondi ricompensati a ciascun contributor tramite meccanismo compensation pool
+    
+    mapping(address => uint256) public compRecovered; // fondi che l'applicant paga dopo loan fallito che vanno alla compensation pool
 
-    uint256 public remainingLoanAmount;
+    uint256 public remainingLoanAmount; 
     Status public status;
 
-    /// Terminal flag — once true, no state-changing operation is permitted on
-    /// this loan. Set by `terminate()`. Solidity ^0.8.22 still compiles
-    /// `selfdestruct` but EIP-6049 marks it deprecated and (post-Cancun) it no
-    /// longer clears storage. We use a flag instead for equivalent semantics:
-    /// the loan becomes inert and its address can be safely deregistered.
-    bool public terminated;
+    bool public terminated; 
 
     event LoanCreated(address indexed applicant, uint256 loanedAmount, uint256 expiryBlock, uint256 collateralPercentage);
-    event Repayment(uint256 baseAmount, uint256 interestAmount, uint256 toCompensation, uint256 remaining);
+    event Repayment(uint256 baseAmount, uint256 interestAmount, uint256 toCompensation, uint256 remaining); // toCompesation: eth dirottati alla cmp pool e remaining quanto manca da pagare
     event LoanClosed(Status status);
     event MarkedFailed();
-    event CompensationRequested(address indexed contributor, uint256 owed, uint256 paid);
+    event CompensationRequested(address indexed contributor, uint256 owed, uint256 paid); 
     event LoanTerminated(address indexed loan);
 
     modifier onlyApplicant() {
@@ -85,44 +68,43 @@ contract LoanContract {
         _;
     }
 
-    constructor(address _applicant, uint256 _loanedAmount, uint256 _collateralPercentage, uint256 _expiryBlock, address[] memory _contribAddrs, uint256[] memory _contribLocks) payable {
+    constructor(address _applicant, uint256 _loanedAmount, uint256 _collateralPercentage, uint256 _expiryBlock, address[] memory _contribAddrs, uint256[] memory _contribLocks) payable { // da lendingPool (p.applicant, loanedAmount, collateralPercentage, block.number + p.duration, finalAddrs,finalShares)
         require(_applicant != address(0), "Zero applicant");
         require(_loanedAmount > 0, "Zero loaned");
         require(msg.value == _loanedAmount, "Bad msg.value");
         require(_contribAddrs.length == _contribLocks.length, "Length mismatch");
         require(_contribAddrs.length > 0, "No contributors");
-        require( _collateralPercentage >= 1 && _collateralPercentage <= 100, "Bad pct");
+        require( _collateralPercentage >= 1 && _collateralPercentage <= 100, "Bad collateral percentage");
 
         applicant = _applicant;
         loanedAmount = _loanedAmount;
         collateralPercentage = _collateralPercentage;
         expiryBlock = _expiryBlock;
-        lendingPool = ILendingPool(msg.sender);
-
+        lendingPool = ILendingPool(msg.sender); // msg.sender è il lendingPool che ha creato questo loanContract, è il riferimento che useremo per interagire con il pool
         uint256 sum = 0;
         for (uint256 i = 0; i < _contribAddrs.length; i++) {
             require(_contribAddrs[i] != address(0), "Zero contributor");
             require(_contribLocks[i] > 0, "Zero lock");
             require(initialLockedOf[_contribAddrs[i]] == 0, "Duplicate contributor");
-            contributors.push(Contributor({
-                    addr: _contribAddrs[i],
-                    initialLocked: _contribLocks[i]
-                })
-            );
+            contributors.push(Contributor({addr: _contribAddrs[i], initialLocked: _contribLocks[i]}));
             initialLockedOf[_contribAddrs[i]] = _contribLocks[i];
             sum += _contribLocks[i];
         }
-        require(sum == _loanedAmount, "Sum mismatch");
+
+        require(sum == _loanedAmount, "Sum mismatch"); // somma totale dei fondi bloccati dai contributor deve essere uguale all'importo del prestito, altrimenti c'è un errore nella creazione del loanContract
         totalInitialLocked = sum;
 
         remainingLoanAmount = _loanedAmount;
+
         status = Status.Active;
 
-        (bool ok, ) = _applicant.call{value: _loanedAmount}("");
+        (bool ok, ) = _applicant.call{value: _loanedAmount}(""); // erogazione del prestito all'applicant
         require(ok, "Disburse failed");
 
         emit LoanCreated(_applicant, _loanedAmount, _expiryBlock, _collateralPercentage);
     }
+
+    
 
     function contributorCount() external view returns (uint256) {
         return contributors.length;
