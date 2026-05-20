@@ -104,7 +104,7 @@ contract LoanContract {
         emit LoanCreated(_applicant, _loanedAmount, _expiryBlock, _collateralPercentage);
     }
 
-    
+
 
     function contributorCount() external view returns (uint256) {
         return contributors.length;
@@ -114,8 +114,6 @@ contract LoanContract {
         return block.number > expiryBlock;
     }
 
-    /// Called by LendingPool when a contributor requests compensation on this loan.
-    /// A loan can only be marked failed once and only while still Active.
     function markFailed() external onlyLendingPool notTerminated {
         require(status == Status.Active, "Not active");
         status = Status.Failed;
@@ -124,41 +122,31 @@ contract LoanContract {
 
     function partialRepay() external payable onlyApplicant notTerminated {
         require(status == Status.Active || status == Status.Failed, "Loan closed");
+
         require(msg.value > 0, "Zero value");
 
-        // Step 1 — Split payment
         uint256 baseAmount = msg.value > remainingLoanAmount ? remainingLoanAmount : msg.value;
         uint256 interest = msg.value - baseAmount;
 
         uint256 n = contributors.length;
 
-        // Step 2 — Distribute base in waterfall order (spec): contributors iterated
-        // DESC by initialLocked (tie-break ASC by address); each is saturated up to
-        // remaining capacity before the next receives anything. capacity_c =
-        // initialLocked − unlockedSoFar − compRecovered, i.e. the part of c's share
-        // not yet settled by either a direct repay or a comp-pool advance recovery.
-        // Saturation implies take == capacity, so the floor in _splitBaseForfeit is
-        // exact at that point (toComp recovers full outstanding, toC fills c to L−AC).
-        // Floor dust can only appear on a non-saturating slice and is auto-corrected
-        // when c is saturated in a later call. Total ETH moved equals baseAmount —
-        // waterfall has no leftover, so no contract-held residue between calls.
         uint256 baseRemaining = baseAmount;
         uint256 baseToComp = 0;
         if (baseAmount > 0) {
             for (uint256 i = 0; i < n && baseRemaining > 0; i++) {
                 Contributor memory c = contributors[i];
-                uint256 capacity = c.initialLocked - unlockedSoFar[c.addr] - compRecovered[c.addr];
+                uint256 capacity = c.initialLocked - unlockedSoFar[c.addr] - compRecovered[c.addr]; // fondi bloccati all'inizio - fondi sbloccati finora - fondi compensati dalla cmp pool 
                 if (capacity == 0) continue;
                 uint256 take = baseRemaining < capacity ? baseRemaining : capacity;
                 baseRemaining -= take;
-                (uint256 toComp_, uint256 toC_) = _splitBaseForfeit(c.addr, take);
+                (uint256 toComp_, uint256 toC_) = _splitBaseForfeit(c.addr, take); // divide la quota `take` tra comp pool e contributor 
                 if (toComp_ > 0) {
-                    baseToComp += toComp_;
+                    baseToComp += toComp_; // tutti i valori che vanno alla comp pool in questo ciclo vengono accumulati in baseToComp e poi trasferiti in un'unica chiamata a fine ciclo, per ottimizzare le chiamate esterne al pool
                     compRecovered[c.addr] += toComp_;
                 }
                 if (toC_ > 0) {
                     unlockedSoFar[c.addr] += toC_;
-                    lendingPool.repayLockedValue{value: toC_}(c.addr, toC_);
+                    lendingPool.repayLockedValue{value: toC_}(c.addr, toC_); //
                 }
             }
         }
