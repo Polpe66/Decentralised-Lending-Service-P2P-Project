@@ -120,6 +120,7 @@ contract LoanContract {
         emit MarkedFailed();
     }
 
+    // funzione che gestisce i rimborsi parziali da parte dell'applicant, sia in caso di prestito ancora attivo che in caso di prestito fallito (in questo secondo caso i fondi vanno a coprire il debito residuo e poi alla compensation pool)
     function partialRepay() external payable onlyApplicant notTerminated {
         require(status == Status.Active || status == Status.Failed, "Loan closed");
 
@@ -146,18 +147,11 @@ contract LoanContract {
                 }
                 if (toC_ > 0) {
                     unlockedSoFar[c.addr] += toC_;
-                    lendingPool.repayLockedValue{value: toC_}(c.addr, toC_); //
+                    lendingPool.repayLockedValue{value: toC_}(c.addr, toC_); // sblocco dei fondi per il contributor c e trasferimento dei fondi sbloccati al pool tramite repayLockedValue
                 }
             }
         }
 
-        // Step 3 — Split interest: collateral → comp pool, gain → contributors.
-        // Gain forfeit uses a different ratio than base: a contributor with comp
-        // claims forfeits a constant fraction (alreadyCompensated / initialLocked)
-        // of their gain to the comp pool — reflecting the risk the pool absorbed.
-        // Unlike base, gain forfeit does NOT bound at `outstanding` (interest
-        // doesn't recover the advance; it's a proportional bonus, and a large
-        // interest payment can yield a forfeit larger than outstanding).
         uint256 collateralAmount = (interest * collateralPercentage) / 100;
         uint256 gain = interest - collateralAmount;
 
