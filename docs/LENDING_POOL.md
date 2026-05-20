@@ -263,7 +263,7 @@ modifier onlyActiveLoan() {
 
 Applicato agli hooks invocabili **solo dai LoanContract registrati**. Difesa contro chiamate dirette da EOA/contract esterni a `repayLockedValue`, `creditInterest`, `compensateFromPool`, ecc.
 
-Un loan entra in `isActiveLoan` quando `resolveProposal` lo deploya, oppure se l'owner lo aggiunge manualmente con `registerLoan`. Esce quando `markLoanClosed` viene auto-chiamato dal loan stesso (su success/failed-fully-settled) o quando l'owner chiama `deregisterLoan`.
+Un loan entra in `isActiveLoan` quando `resolveProposal` lo deploya. Esce quando `markLoanClosed` viene auto-chiamato dal loan stesso (su success/failed-fully-settled). Non esiste alcuna escape hatch admin: l'auto-gestione del `LoanContract` è l'unico meccanismo di deregistrazione.
 
 ---
 
@@ -767,21 +767,19 @@ Auto-deregistration: il loan stesso chiama questo hook quando si chiude (Success
 
 ---
 
-## 15. Owner-only loan registry
+## 15. Nessuna escape hatch admin sul loan registry
 
-```solidity
-function registerLoan(address loanContract) external onlyOwner {
-    isActiveLoan[loanContract] = true;
-    emit LoanRegistered(loanContract);
-}
+Le funzioni `registerLoan` e `deregisterLoan` sono state **rimosse** dal contratto. Il registro `isActiveLoan` viene gestito **esclusivamente** dal flusso automatico:
 
-function deregisterLoan(address loanContract) external onlyOwner {
-    isActiveLoan[loanContract] = false;
-    emit LoanDeregistered(loanContract);
-}
-```
+- **Registrazione**: `resolveProposal` setta `isActiveLoan[loanAddr] = true` immediatamente dopo il deploy del nuovo `LoanContract`.
+- **Deregistrazione**: ogni `LoanContract` chiama `markLoanClosed()` autonomamente al termine del proprio ciclo di vita (Successful, oppure Failed con tutti gli owed = 0).
 
-Admin override. Servono per situazioni eccezionali (debug, recovery). Nel flusso normale **non sono usate**: il deploy in `resolveProposal` registra il loan automaticamente, e `markLoanClosed` lo deregistra.
+Rationale della scelta di design:
+
+- `registerLoan` non aveva alcun use case legittimo nel flusso normale e apriva un vettore di centralizzazione (un owner malevolo poteva registrare contratti arbitrari per accedere alle funzioni `onlyActiveLoan` come `compensateFromPool` o `increaseCollateral`/`decreaseCollateral`).
+- `deregisterLoan` apriva un vettore di griefing serio: un owner malevolo poteva deregistrare prematuramente un `LoanContract` fallito, **bloccando permanentemente** la possibilità per i contributor di chiamare `claimCompensation` (che internamente invoca `compensateFromPool`, protetta da `onlyActiveLoan`). Anche su loan attivi, la deregistrazione avrebbe bloccato `partialRepay` e congelato i fondi locked.
+
+Trade-off accettato: in caso di bug imprevisto in un `LoanContract` deployato che gli impedisca di chiamare `markLoanClosed`, quel loan resterebbe `isActive=true` per sempre, ma le funzioni `onlyActiveLoan` che può chiamare hanno guards interni (`msg.value == amount`, `lockedValue >= amount`, ecc.) che limitano il danno. Si è preferito minimizzare la superficie di attacco amministrativa.
 
 ---
 
@@ -865,11 +863,9 @@ ETH ricevuti via `receive()` **non aggiornano** `totalFundingPool` né `compensa
 ```
    resolveProposal                            markLoanClosed (Successful)
    ────────────► [isActiveLoan = true] ────────────────────────────────► [isActiveLoan = false]
-                          ▲                                                       ▲
-                          │                                                       │
-                          │                                       markLoanClosed (terminate Failed)
-                          │
-                  registerLoan (admin, raro)                       deregisterLoan (admin, raro)
+                                                                                  ▲
+                                                                                  │
+                                                                  markLoanClosed (terminate Failed)
 ```
 
 ### Contributor

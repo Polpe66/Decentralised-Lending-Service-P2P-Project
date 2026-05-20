@@ -66,7 +66,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     event Deposited(address indexed contributor, uint256 amount);
     event Withdrawn(address indexed contributor, uint256 amount);
     event LoanRegistered(address indexed loanContract);
-    event LoanDeregistered(address indexed loanContract); // loan chiuso o in situazioni eccezionali(bug) chiamato dall'owner
+    event LoanDeregistered(address indexed loanContract);
     event CollateralPercentageChanged(uint256 newValue);
     event ProposalSubmitted(uint256 indexed proposalId, address indexed applicant, uint256 amount);
     event ProposalVoted(uint256 indexed proposalId, address indexed voter, bool approve);
@@ -316,13 +316,12 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         deposits[contributor] -= amount;
         lockedValue[contributor] -= amount;
         totalFundingPool -= amount;
-        totalLocked -= amount;
+        totalLocked -= amount; //DUBBIO MAESA
 
         (bool ok, ) = contributor.call{value: amount}("");
         require(ok, "Compensation transfer failed");
     }
 
-    // ── Collateral percentage (called by loan on close) ───────────────────────
 
     function increaseCollateral() external onlyActiveLoan {
         uint256 next = collateralPercentage + COLLATERAL_STEP;
@@ -331,35 +330,19 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     }
 
     function decreaseCollateral() external onlyActiveLoan {
-        collateralPercentage = collateralPercentage > COLLATERAL_STEP
-            ? collateralPercentage - COLLATERAL_STEP
-            : 1;
+        collateralPercentage = collateralPercentage > COLLATERAL_STEP ? collateralPercentage - COLLATERAL_STEP : 1;
         emit CollateralPercentageChanged(collateralPercentage);
     }
 
-    // ── Loan registry (owner only) ────────────────────────────────────────────
-
-    function registerLoan(address loanContract) external onlyOwner {
-        isActiveLoan[loanContract] = true;
-        emit LoanRegistered(loanContract);
-    }
-
-    function deregisterLoan(address loanContract) external onlyOwner { 
-        isActiveLoan[loanContract] = false;
-        emit LoanDeregistered(loanContract);
-    }
-
-    /// Loan self-deregistration on close (called by LoanContract after success).
+    // chiamata da loan contract dopo il rimborso completo del prestito
     function markLoanClosed() external onlyActiveLoan {
         isActiveLoan[msg.sender] = false;
         emit LoanDeregistered(msg.sender);
     }
 
-    // ── UUPS ──────────────────────────────────────────────────────────────────
-
+    // UUPS
     function _authorizeUpgrade(address) internal override onlyOwner {}
 
-    // ── Receive (loan contracts send ETH for repayments/compensation) ─────────
-
+    
     receive() external payable {}
 }

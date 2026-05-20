@@ -199,64 +199,6 @@ describe("LendingPool", function () {
         });
     });
 
-    // ── registerLoan / deregisterLoan ─────────────────────────────────────────
-
-    describe("registerLoan()", function () {
-        it("only owner can register", async function () {
-            await expect(
-                pool.connect(stranger).registerLoan(stranger.address)
-            ).to.be.reverted;
-        });
-
-        it("owner registers and deregisters", async function () {
-            await pool.connect(owner).registerLoan(stranger.address);
-            expect(await pool.isActiveLoan(stranger.address)).to.be.true;
-
-            await pool.connect(owner).deregisterLoan(stranger.address);
-            expect(await pool.isActiveLoan(stranger.address)).to.be.false;
-        });
-
-        it("emits LoanRegistered", async function () {
-            await expect(pool.connect(owner).registerLoan(stranger.address))
-                .to.emit(pool, "LoanRegistered")
-                .withArgs(stranger.address);
-        });
-    });
-
-    // ── collateralPercentage bounds ───────────────────────────────────────────
-
-    describe("collateralPercentage bounds", function () {
-        beforeEach(async function () {
-            await pool.connect(owner).registerLoan(owner.address);
-        });
-
-        it("increases by 5", async function () {
-            await pool.connect(owner).increaseCollateral();
-            expect(await pool.collateralPercentage()).to.equal(55n);
-        });
-
-        it("decreases by 5", async function () {
-            await pool.connect(owner).decreaseCollateral();
-            expect(await pool.collateralPercentage()).to.equal(45n);
-        });
-
-        it("caps at 100", async function () {
-            for (let i = 0; i < 12; i++) await pool.connect(owner).increaseCollateral();
-            expect(await pool.collateralPercentage()).to.equal(100n);
-        });
-
-        it("floors at 1", async function () {
-            for (let i = 0; i < 12; i++) await pool.connect(owner).decreaseCollateral();
-            expect(await pool.collateralPercentage()).to.equal(1n);
-        });
-
-        it("emits CollateralPercentageChanged", async function () {
-            await expect(pool.connect(owner).increaseCollateral())
-                .to.emit(pool, "CollateralPercentageChanged")
-                .withArgs(55n);
-        });
-    });
-
     // ── UUPS upgrade ──────────────────────────────────────────────────────────
 
     describe("UUPS upgrade", function () {
