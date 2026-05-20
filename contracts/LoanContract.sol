@@ -2,10 +2,7 @@
 pragma solidity ^0.8.22;
 
 interface ILendingPool {
-    function repayLockedValue(
-        address contributor,
-        uint256 amount
-    ) external payable;
+    function repayLockedValue(address contributor, uint256 amount) external payable;
     function creditInterest(address contributor) external payable;
     function addToCompensationPool() external payable;
     function decreaseCollateral() external;
@@ -66,25 +63,11 @@ contract LoanContract {
     /// the loan becomes inert and its address can be safely deregistered.
     bool public terminated;
 
-    event LoanCreated(
-        address indexed applicant,
-        uint256 loanedAmount,
-        uint256 expiryBlock,
-        uint256 collateralPercentage
-    );
-    event Repayment(
-        uint256 baseAmount,
-        uint256 interestAmount,
-        uint256 toCompensation,
-        uint256 remaining
-    );
+    event LoanCreated(address indexed applicant, uint256 loanedAmount, uint256 expiryBlock, uint256 collateralPercentage);
+    event Repayment(uint256 baseAmount, uint256 interestAmount, uint256 toCompensation, uint256 remaining);
     event LoanClosed(Status status);
     event MarkedFailed();
-    event CompensationRequested(
-        address indexed contributor,
-        uint256 owed,
-        uint256 paid
-    );
+    event CompensationRequested(address indexed contributor, uint256 owed, uint256 paid);
     event LoanTerminated(address indexed loan);
 
     modifier onlyApplicant() {
@@ -102,26 +85,13 @@ contract LoanContract {
         _;
     }
 
-    constructor(
-        address _applicant,
-        uint256 _loanedAmount,
-        uint256 _collateralPercentage,
-        uint256 _expiryBlock,
-        address[] memory _contribAddrs,
-        uint256[] memory _contribLocks
-    ) payable {
+    constructor(address _applicant, uint256 _loanedAmount, uint256 _collateralPercentage, uint256 _expiryBlock, address[] memory _contribAddrs, uint256[] memory _contribLocks) payable {
         require(_applicant != address(0), "Zero applicant");
         require(_loanedAmount > 0, "Zero loaned");
         require(msg.value == _loanedAmount, "Bad msg.value");
-        require(
-            _contribAddrs.length == _contribLocks.length,
-            "Length mismatch"
-        );
+        require(_contribAddrs.length == _contribLocks.length, "Length mismatch");
         require(_contribAddrs.length > 0, "No contributors");
-        require(
-            _collateralPercentage >= 1 && _collateralPercentage <= 100,
-            "Bad pct"
-        );
+        require( _collateralPercentage >= 1 && _collateralPercentage <= 100, "Bad pct");
 
         applicant = _applicant;
         loanedAmount = _loanedAmount;
@@ -133,12 +103,8 @@ contract LoanContract {
         for (uint256 i = 0; i < _contribAddrs.length; i++) {
             require(_contribAddrs[i] != address(0), "Zero contributor");
             require(_contribLocks[i] > 0, "Zero lock");
-            require(
-                initialLockedOf[_contribAddrs[i]] == 0,
-                "Duplicate contributor"
-            );
-            contributors.push(
-                Contributor({
+            require(initialLockedOf[_contribAddrs[i]] == 0, "Duplicate contributor");
+            contributors.push(Contributor({
                     addr: _contribAddrs[i],
                     initialLocked: _contribLocks[i]
                 })
@@ -155,15 +121,8 @@ contract LoanContract {
         (bool ok, ) = _applicant.call{value: _loanedAmount}("");
         require(ok, "Disburse failed");
 
-        emit LoanCreated(
-            _applicant,
-            _loanedAmount,
-            _expiryBlock,
-            _collateralPercentage
-        );
+        emit LoanCreated(_applicant, _loanedAmount, _expiryBlock, _collateralPercentage);
     }
-
-    // ── Views ─────────────────────────────────────────────────────────────────
 
     function contributorCount() external view returns (uint256) {
         return contributors.length;
@@ -173,8 +132,6 @@ contract LoanContract {
         return block.number > expiryBlock;
     }
 
-    // ── Status transitions ────────────────────────────────────────────────────
-
     /// Called by LendingPool when a contributor requests compensation on this loan.
     /// A loan can only be marked failed once and only while still Active.
     function markFailed() external onlyLendingPool notTerminated {
@@ -183,19 +140,12 @@ contract LoanContract {
         emit MarkedFailed();
     }
 
-    // ── Repayment ─────────────────────────────────────────────────────────────
-
     function partialRepay() external payable onlyApplicant notTerminated {
-        require(
-            status == Status.Active || status == Status.Failed,
-            "Loan closed"
-        );
+        require(status == Status.Active || status == Status.Failed, "Loan closed");
         require(msg.value > 0, "Zero value");
 
         // Step 1 — Split payment
-        uint256 baseAmount = msg.value > remainingLoanAmount
-            ? remainingLoanAmount
-            : msg.value;
+        uint256 baseAmount = msg.value > remainingLoanAmount ? remainingLoanAmount : msg.value;
         uint256 interest = msg.value - baseAmount;
 
         uint256 n = contributors.length;
@@ -215,18 +165,11 @@ contract LoanContract {
         if (baseAmount > 0) {
             for (uint256 i = 0; i < n && baseRemaining > 0; i++) {
                 Contributor memory c = contributors[i];
-                uint256 capacity = c.initialLocked -
-                    unlockedSoFar[c.addr] -
-                    compRecovered[c.addr];
+                uint256 capacity = c.initialLocked - unlockedSoFar[c.addr] - compRecovered[c.addr];
                 if (capacity == 0) continue;
-                uint256 take = baseRemaining < capacity
-                    ? baseRemaining
-                    : capacity;
+                uint256 take = baseRemaining < capacity ? baseRemaining : capacity;
                 baseRemaining -= take;
-                (uint256 toComp_, uint256 toC_) = _splitBaseForfeit(
-                    c.addr,
-                    take
-                );
+                (uint256 toComp_, uint256 toC_) = _splitBaseForfeit(c.addr, take);
                 if (toComp_ > 0) {
                     baseToComp += toComp_;
                     compRecovered[c.addr] += toComp_;
@@ -266,10 +209,7 @@ contract LoanContract {
         // Step 4 — Update remaining and close if fully repaid.
         remainingLoanAmount -= baseAmount;
 
-        uint256 toComp = collateralAmount +
-            gainLeftover +
-            baseToComp +
-            gainToComp;
+        uint256 toComp = collateralAmount + gainLeftover + baseToComp + gainToComp;
 
         if (remainingLoanAmount == 0) {
             bool wasFailed = status == Status.Failed;
@@ -297,9 +237,7 @@ contract LoanContract {
                     compRecovered[addr] += gap;
                     lendingPool.addToCompensationPool{value: gap}();
                 }
-                uint256 residue = il -
-                    unlockedSoFar[addr] -
-                    compRecovered[addr];
+                uint256 residue = il - unlockedSoFar[addr] - compRecovered[addr];
                 if (residue > 0) {
                     unlockedSoFar[addr] += residue;
                     lendingPool.repayLockedValue{value: residue}(addr, residue);
@@ -370,9 +308,7 @@ contract LoanContract {
         uint256 locked = initialLockedOf[msg.sender];
         require(locked > 0, "Not a contributor");
 
-        uint256 owed = locked -
-            unlockedSoFar[msg.sender] -
-            alreadyCompensated[msg.sender];
+        uint256 owed = locked - unlockedSoFar[msg.sender] - alreadyCompensated[msg.sender];
         require(owed > 0, "Nothing owed");
 
         // Step 2/3 — pay min(owed, comp pool). CEI: read pool balance, update
@@ -423,9 +359,7 @@ contract LoanContract {
             for (uint256 i = 0; i < n; i++) {
                 address c = contributors[i].addr;
                 uint256 il = contributors[i].initialLocked;
-                uint256 owed = il -
-                    unlockedSoFar[c] -
-                    alreadyCompensated[c];
+                uint256 owed = il - unlockedSoFar[c] - alreadyCompensated[c];
                 require(owed == 0, "Outstanding compensation");
             }
             // Forward residual through the tracked path BEFORE deregistering,
@@ -466,17 +400,12 @@ contract LoanContract {
     /// outstanding always holds and the cap is defensive only. When `share` ==
     /// `remainingShare` (saturation) the floor is exact: toComp = outstanding,
     /// recovering the full advance for the comp pool in that single call.
-    function _splitBaseForfeit(
-        address c,
-        uint256 share
-    ) internal view returns (uint256 toComp, uint256 toC) {
+    function _splitBaseForfeit(address c, uint256 share) internal view returns (uint256 toComp, uint256 toC) {
         uint256 outstanding = alreadyCompensated[c] - compRecovered[c];
         if (outstanding == 0) {
             return (0, share);
         }
-        uint256 remainingShare = initialLockedOf[c] -
-            unlockedSoFar[c] -
-            compRecovered[c];
+        uint256 remainingShare = initialLockedOf[c] - unlockedSoFar[c] - compRecovered[c];
         if (remainingShare == 0) {
             // Should not happen during normal flow (cum share for c ≤ initialLocked).
             return (0, share);
@@ -496,10 +425,7 @@ contract LoanContract {
     /// (2) no outstanding cap — a large interest payment legitimately yields a
     /// gain forfeit greater than outstanding (the cap there would silently
     /// short-change the comp pool on its proportional bonus).
-    function _splitGainForfeit(
-        address c,
-        uint256 g
-    ) internal view returns (uint256 gComp, uint256 gC) {
+    function _splitGainForfeit(address c, uint256 g) internal view returns (uint256 gComp, uint256 gC) {
         uint256 ac = alreadyCompensated[c];
         if (ac == 0) {
             return (0, g);
