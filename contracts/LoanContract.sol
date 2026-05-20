@@ -168,10 +168,12 @@ contract LoanContract {
                 if (gC > 0) lendingPool.creditInterest{value: gC}(c.addr); // accredito dell'interesse al contributor c tramite creditInterest del pool
             }
         }
+
+        //DA QUA IN POI 
         uint256 gainLeftover = gain - gainDistributed; 
 
 
-        remainingLoanAmount -= baseAmount;
+        remainingLoanAmount -= baseAmount; 
 
         uint256 toComp = collateralAmount + gainLeftover + baseToComp + gainToComp;
 
