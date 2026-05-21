@@ -114,11 +114,11 @@ describe("LoanContract — terminate() lifecycle", function () {
         );
     });
 
-    it("reverts on Failed loan with outstanding owed ('Outstanding compensation')", async function () {
+    it("reverts on Failed loan with outstanding owed ('Unrecovered advance compensation')", async function () {
         const loan = await setupFailedLoanWithOwed();
         expect(await loan.status()).to.equal(1n); // Failed
         await expect(loan.connect(stranger).terminate()).to.be.revertedWith(
-            "Outstanding compensation"
+            "Unrecovered advance compensation"
         );
     });
 

@@ -617,13 +617,22 @@ describe("LoanContract", function () {
         it("partial payout when comp pool < owed", async function () {
             const loan = await setupExpired();
             // Loan A funded comp pool with 1 ETH. c1 owed = 3 ETH → paid = 1.
+            // Interpretation B: ETH non lascia il pool; lockedValue cala, deposits invariato.
             const compBefore = await pool.compensationPool();
             expect(compBefore).to.equal(ONE_ETH);
-            await expect(
-                loan.connect(c1).requestCompensation()
-            ).to.changeEtherBalance(c1, ONE_ETH);
+            const lockedBefore = await pool.lockedValue(c1.address);
+            const depositsBefore = await pool.deposits(c1.address);
+            const c1WalletBefore = await ethers.provider.getBalance(c1.address);
+            const tx = await loan.connect(c1).requestCompensation();
+            const receipt = await tx.wait();
+            const gasCost = receipt.gasUsed * receipt.gasPrice;
+            const c1WalletAfter = await ethers.provider.getBalance(c1.address);
+            // wallet cala solo del gas (no ETH ricevuto)
+            expect(c1WalletBefore - c1WalletAfter).to.equal(gasCost);
             expect(await pool.compensationPool()).to.equal(0n);
             expect(await loan.alreadyCompensated(c1.address)).to.equal(ONE_ETH);
+            expect(await pool.lockedValue(c1.address)).to.equal(lockedBefore - ONE_ETH);
+            expect(await pool.deposits(c1.address)).to.equal(depositsBefore);
         });
 
         it("emits CompensationRequested with owed and paid", async function () {
@@ -633,21 +642,19 @@ describe("LoanContract", function () {
                 .withArgs(c1.address, ONE_ETH * 3n, ONE_ETH);
         });
 
-        it("reduces contributor's deposits and lockedValue by paid amount", async function () {
+        it("reduces lockedValue and totalLocked by paid amount; deposits invariati", async function () {
             const loan = await setupExpired();
             const depBefore = await pool.deposits(c1.address);
             const lockBefore = await pool.lockedValue(c1.address);
             const totFundBefore = await pool.totalFundingPool();
             const totLockBefore = await pool.totalLocked();
             await loan.connect(c1).requestCompensation();
-            expect(await pool.deposits(c1.address)).to.equal(
-                depBefore - ONE_ETH
-            );
+            // Interpretation B: deposits e totalFundingPool invariati. Solo lockedValue
+            // e totalLocked calano. Contributor riacquista disposable, ETH resta in pool.
+            expect(await pool.deposits(c1.address)).to.equal(depBefore);
+            expect(await pool.totalFundingPool()).to.equal(totFundBefore);
             expect(await pool.lockedValue(c1.address)).to.equal(
                 lockBefore - ONE_ETH
-            );
-            expect(await pool.totalFundingPool()).to.equal(
-                totFundBefore - ONE_ETH
             );
             expect(await pool.totalLocked()).to.equal(totLockBefore - ONE_ETH);
         });
@@ -700,9 +707,12 @@ describe("LoanContract", function () {
             expect(await loan.unlockedSoFar(c2.address)).to.equal(0n);
 
             // c1 second claim: owed = 3 - toC1 - 1 = toComp; avail = toComp → paid = toComp.
-            await expect(
-                loan.connect(c1).requestCompensation()
-            ).to.changeEtherBalance(c1, toComp);
+            // Interpretation B: no transfer al wallet. lockedValue cala.
+            const lockedBefore = await pool.lockedValue(c1.address);
+            await loan.connect(c1).requestCompensation();
+            expect(await pool.lockedValue(c1.address)).to.equal(
+                lockedBefore - toComp
+            );
             expect(await loan.alreadyCompensated(c1.address)).to.equal(
                 ONE_ETH + toComp
             );
@@ -791,9 +801,12 @@ describe("LoanContract", function () {
             expect(await pool.compensationPool()).to.equal(toComp);
 
             // c1 still owed: 3 - toC1 - 1 = toComp. avail = toComp → paid = toComp.
-            await expect(
-                loan.connect(c1).requestCompensation()
-            ).to.changeEtherBalance(c1, toComp);
+            // Interpretation B: lockedValue cala, no transfer wallet.
+            const lockedBefore = await pool.lockedValue(c1.address);
+            await loan.connect(c1).requestCompensation();
+            expect(await pool.lockedValue(c1.address)).to.equal(
+                lockedBefore - toComp
+            );
             expect(await loan.alreadyCompensated(c1.address)).to.equal(
                 ONE_ETH + toComp
             );
@@ -1045,7 +1058,7 @@ describe("LoanContract", function () {
             await loan.connect(c1).requestCompensation();
             await expect(
                 loan.connect(stranger).terminate()
-            ).to.be.revertedWith("Outstanding compensation");
+            ).to.be.revertedWith("Unrecovered advance compensation");
         });
 
         it("reverts if already terminated", async function () {

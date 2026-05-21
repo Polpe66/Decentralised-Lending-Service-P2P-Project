@@ -320,17 +320,9 @@ contract LoanContract {
             revert("Loan still active");
         }
 
-        // caso in cui 
-        uint256 bal = address(this).balance;
-        if (bal > 0) {
-            (bool ok, ) = address(lendingPool).call{value: bal}("");
-            require(ok, "Forward failed");
-        }
-
         terminated = true;
         emit LoanTerminated(address(this));
     }
-
 
 
     // funzione che effettua lo split proporzionale di una payment parziale del base amount tra comp pool e contributor

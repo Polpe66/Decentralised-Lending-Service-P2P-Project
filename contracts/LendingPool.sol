@@ -327,19 +327,21 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     }
 
 
-    function compensateFromPool(address contributor, uint256 amount) external onlyActiveLoan nonReentrant { // chiamata in caso di fallimento del loan
+    // Compensazione da comp pool (interpretation B confermata dal prof):
+    // ETH resta nel LendingPool. Il contributor recupera quei fondi come
+    // disposable (deposits invariato, lockedValue cala) e puo' withdraw()
+    // o riusarli per voti/loan futuri.
+    function compensateFromPool(address contributor, uint256 amount) external onlyActiveLoan {
         require(amount > 0, "Zero amount");
         require(amount <= compensationPool, "Exceeds comp pool");
         require(lockedValue[contributor] >= amount, "Underflow locked");
 
         compensationPool -= amount;
-        deposits[contributor] -= amount;
         lockedValue[contributor] -= amount;
-        totalFundingPool -= amount;
-        totalLocked -= amount; //DUBBIO MAESA
-
-        (bool ok, ) = contributor.call{value: amount}("");
-        require(ok, "Compensation transfer failed");
+        totalLocked -= amount;
+        // deposits[contributor] invariato: contributor riacquista disposable.
+        // totalFundingPool invariato: ETH resta nel pool.
+        // No external call: nonReentrant rimosso (niente vettore reentrancy).
     }
 
 
