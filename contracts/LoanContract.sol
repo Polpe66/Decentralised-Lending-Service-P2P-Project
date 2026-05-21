@@ -158,10 +158,12 @@ contract LoanContract {
                 uint256 take = baseRemaining < capacity ? baseRemaining : capacity;
                 baseRemaining -= take;
                 (uint256 toComp_, uint256 toC_) = _splitBaseForfeit(c.addr, take);
-                if (toComp_ > 0) {
+                // caso in cui pago la comp pool
+                if (toComp_ > 0) { 
                     baseToComp += toComp_;
                     compRecovered[c.addr] += toComp_;
                 }
+                // caso in cui pago il contributor
                 if (toC_ > 0) {
                     unlockedSoFar[c.addr] += toC_;
                     lendingPool.repayLockedValue{value: toC_}(c.addr, toC_);
@@ -169,115 +171,96 @@ contract LoanContract {
             }
         }
 
-        // ── 2. Interesse ─────────────────────────────────────────────────────
+        // interesse 
         uint256 afterBase = msg.value - baseAmount;
-        uint256 interestAmount = afterBase > remainingInterest ? remainingInterest : afterBase;
+        uint256 interestAmount = afterBase > remainingInterest ? remainingInterest : afterBase; // si considera la logica di poter eccedere con i pagamenti
         uint256 excess = afterBase - interestAmount; // tutto oltre il dovuto va a comp pool
-        uint256 interestToComp = 0;
+        uint256 interestToComp = 0; // causa collateraPercentage
         uint256 interestDistributed = 0;
 
         if (interestAmount > 0) {
             uint256 interestRemaining = interestAmount;
             for (uint256 i = 0; i < n && interestRemaining > 0; i++) {
-                address ca = contributors[i].addr;
-                uint256 cap = expectedInterestOf[ca] - interestPaidGrossOf[ca];
-                if (cap == 0) continue;
+                address ca = contributors[i].addr; // ca contributor address
+                uint256 cap = expectedInterestOf[ca] - interestPaidGrossOf[ca]; // cap contributor address payable, quanto deve ricevere di interesse lordo (gain + collaterale)
+                
+                if (cap == 0) continue; // se non deve ricevere interessi skip
+                
                 uint256 take = interestRemaining < cap ? interestRemaining : cap;
                 interestRemaining -= take;
-                interestPaidGrossOf[ca] += take;
-                interestDistributed += take;
-                // split per-contributor: quota collaterale -> comp pool, gain -> wallet
-                uint256 coll = (take * collateralPercentage) / 100;
-                uint256 gain = take - coll;
+                interestPaidGrossOf[ca] += take; // aggiorno quanto ha ricevuto di interesse lordo finora
+                interestDistributed += take; // interessi totali distribuiti 
+               
+                uint256 coll = (take * collateralPercentage) / 100; // collaterale che va alla cmp pool 
+                uint256 gain = take - coll; // guadagno netto contributor
+
                 interestToComp += coll;
                 if (gain > 0) {
                     lendingPool.creditInterest{value: gain}(ca);
                 }
             }
-            // dust che non ha trovato capacita' (caps esauriti) -> eccesso
-            excess += interestRemaining;
+        
+            excess += interestRemaining; // tutto quello  che è > di loan + interest
         }
 
         remainingLoanAmount -= baseAmount;
         remainingInterest -= interestDistributed;
 
-        uint256 toComp = baseToComp + interestToComp + excess;
+        uint256 toComp = baseToComp + interestToComp + excess; // tutto quello che va alla cmp pool
 
-        // ── Chiusura: solo se capitale E interesse interamente saldati ───────
+        // chiusura
         if (remainingLoanAmount == 0 && remainingInterest == 0) {
-            bool wasFailed = status == Status.Failed;
+            bool wasFailed = status == Status.Failed; // true se loan era fallito prima di questa payment, false se è un pagamento che chiude un loan ancora attivo (non fallito)
 
-            // Residue pass — defensive close-out per contributor (capitale).
-            // Sotto waterfall il pass e' tipicamente no-op; tenuto per coprire
-            // dust e value forwarded da terzi.
             for (uint256 i = 0; i < n; i++) {
-                address addr = contributors[i].addr;
-                uint256 il = contributors[i].initialLocked;
+                address addr = contributors[i].addr; 
+                uint256 il = contributors[i].initialLocked; // il initialLocked
 
-                uint256 gap = alreadyCompensated[addr] - compRecovered[addr];
+                uint256 gap = alreadyCompensated[addr] - compRecovered[addr]; // differenza tra quanto contributor ha ricevuto dalla cmp pool e quanto la cmp pool ha ricevuto dall'applicant 
                 if (gap > 0) {
-                    compRecovered[addr] += gap;
+                    compRecovered[addr] += gap;  
                     lendingPool.addToCompensationPool{value: gap}();
                 }
+
                 uint256 residue = il - unlockedSoFar[addr] - compRecovered[addr];
                 if (residue > 0) {
                     unlockedSoFar[addr] += residue;
                     lendingPool.repayLockedValue{value: residue}(addr, residue);
                 }
             }
-
-            if (toComp > 0) {
+            
+            //gestione ecccessi finali
+            if (toComp > 0) { // soldi mandati alla comp pool per chiudere il loan, sia per coprire l'unrecoveredAdvance residuo (gap) che per i pagamenti in eccesso a loan+interest
                 lendingPool.addToCompensationPool{value: toComp}();
             }
-            uint256 sweep = address(this).balance;
+            uint256 sweep = address(this).balance; 
             if (sweep > 0) {
-                lendingPool.addToCompensationPool{value: sweep}();
+                lendingPool.addToCompensationPool{value: sweep}(); // sweep finale per qualsiasi ETH rimasto
             }
 
-            if (!wasFailed) {
+            if (!wasFailed) { // false vuol dire che contratto si chiude in maniera ordinaria
                 status = Status.Successful;
                 lendingPool.decreaseCollateral();
                 lendingPool.markLoanClosed();
                 emit LoanClosed(Status.Successful);
             }
-            // Failed loan ripagato in capitale resta Failed (interest gia' azzerato a markFailed).
 
             emit Repayment(baseAmount, interestDistributed, excess, toComp + sweep, 0, 0);
         } else {
-            if (toComp > 0) {
+            if (toComp > 0) { // caso di pagamento parziale
                 lendingPool.addToCompensationPool{value: toComp}();
             }
             emit Repayment(baseAmount, interestDistributed, excess, toComp, remainingLoanAmount, remainingInterest);
         }
     }
 
-    // ── Compensation ──────────────────────────────────────────────────────────
-
-    /// Claim compensation from the pool for value locked in this loan that the
-    /// applicant has not yet repaid. Callable by any contributor of this loan
-    /// once the loan is failed (expired with unrecoveredAdvance balance). May be
-    /// called multiple times as the comp pool refills; partial payouts are
-    /// allowed (no revert if pool < owed).
-    ///
-    /// First call also marks the loan FAILED and bumps the global collateral
-    /// percentage via LendingPool callback.
-    ///
-    /// Claiming sets up the caller's `unrecoveredAdvance` (alreadyCompensated −
-    /// compRecovered) which proportionally diverts future partialRepay shares
-    /// back to the comp pool until the advance is recovered (see partialRepay).
-    function requestCompensation() external notTerminated {
-        // Loan must be "failed" for compensation purposes:
-        //   - Status Active → transition to Failed if expired AND unrecoveredAdvance (capitale o interesse).
-        //   - Status Failed → already marked, claims always allowed while owed > 0
-        //     (even after a late full repayment, since per spec a failed loan can
-        //     never become Successful).
-        //   - Status Successful → loan was repaid before any failure; no claims.
-        require(status != Status.Successful, "Loan successful");
+    // parte compensazione
+   function requestCompensation() external notTerminated {
+        require(status != Status.Successful, "Loan successful"); // per richiedere compensazione il loan non deve essere successful, può essere active o failed. Se è active, la call può causare la transizione a failed se il loan è scaduto e c'è ancora capitale o interesse da recuperare. Se è già failed, si procede direttamente alla compensazione.
 
         bool justTransitioned = false;
         if (status == Status.Active) {
             require(block.number > expiryBlock, "Not expired");
-            // unrecoveredAdvance = capitale residuo o interesse residuo. Se entrambi 0 il loan sarebbe gia' Successful.
             require(remainingLoanAmount > 0 || remainingInterest > 0, "Nothing unrecoveredAdvance");
             status = Status.Failed;
             remainingInterest = 0; // su Failed l'interesse non e' piu' dovuto; pagamenti futuri vanno in eccesso a comp pool
@@ -285,30 +268,23 @@ contract LoanContract {
             emit MarkedFailed();
             justTransitioned = true;
         }
-        // Invariant past this point: status == Status.Failed.
 
         uint256 locked = initialLockedOf[msg.sender];
         require(locked > 0, "Not a contributor");
 
-        uint256 owed = locked - unlockedSoFar[msg.sender] - alreadyCompensated[msg.sender];
-        if (owed == 0) {
-            // Su loan gia' Failed (no transizione in questa call) preserviamo
-            // il revert "Nothing owed" per evitare call inutili.
-            require(justTransitioned, "Nothing owed");
-            // Edge case: transizione Active->Failed appena fatta ma caller non ha
-            // capitale residuo da recuperare. Emette evento e ritorna senza payout.
+        uint256 owed = locked - unlockedSoFar[msg.sender] - alreadyCompensated[msg.sender]; // eth dovuti
+        
+        // gestisce il caso in cui un contributor chiama requestCompensation subito dopo la transizione da active a failed, ma non ha effettivamente nulla da compensare (forse perche' ha gia' ricevuto dei pagamenti parziali che hanno coperto il suo locked), in questo caso non è un errore e si emette l'evento con 0 dovuto e 0 pagato
+        if (owed == 0) { 
+            require(justTransitioned, "Nothing owed"); 
             emit CompensationRequested(msg.sender, 0, 0);
             return;
         }
 
-        // Step 2/3 — pay min(owed, comp pool). CEI: read pool balance, update
-        // local state, then perform the external transfer. The recipient
-        // cannot re-enter to inflate their compensation because
-        // alreadyCompensated is bumped before the call.
-        uint256 avail = lendingPool.compensationPool();
-        uint256 paid = owed > avail ? avail : owed;
+        uint256 avail = lendingPool.compensationPool(); // eth disponibili nella cmp pool
+        uint256 paid = owed > avail ? avail : owed; // quanto viene pagato al contributor
 
-        alreadyCompensated[msg.sender] += paid;
+        alreadyCompensated[msg.sender] += paid; // aumento valore compensato dallla cmp pool per quel contributor
 
         if (paid > 0) {
             lendingPool.compensateFromPool(msg.sender, paid);
@@ -317,60 +293,34 @@ contract LoanContract {
         emit CompensationRequested(msg.sender, owed, paid);
     }
 
-    /// Permissionless terminator. Callable by anyone once conditions hold:
-    ///   - status == Successful (full repayment closed the loan), OR
-    ///   - status == Failed AND no contributor has unrecoveredAdvance owed > 0
-    ///     (every locked share has been either unlocked via repayLockedValue
-    ///     or compensated via requestCompensation).
-    ///
-    /// Effects:
-    ///   - Forwards any residual contract balance back to the LendingPool
-    ///     (to the compensation pool while still registered; via plain transfer
-    ///     once deregistered).
-    ///   - Self-deregisters from LendingPool (Failed branch). Successful loans
-    ///     have already deregistered themselves during their close branch.
-    ///   - Sets `terminated = true`. The `notTerminated` modifier then blocks
-    ///     any further state-changing call (partialRepay, requestCompensation,
-    ///     markFailed).
-    ///
-    /// Spec [R3]: "no loan contract must remain active indefinitely". This
-    /// function is the explicit cleanup hook required by that rule.
+
     function terminate() external {
         require(!terminated, "Already terminated");
 
         if (status == Status.Successful) {
-            // Successful loans already deregistered at close — nothing more to
-            // do on the LendingPool side; forward any donated dust (open
-            // receive() means anyone could have wired ETH here post-close).
+
+            // contratto successful
+            
         } else if (status == Status.Failed) {
-            // Every contributor's claim must be fully settled (either repaid
-            // back by applicant or covered by compensation pool).
+            // controlla a chi mancano fondi e se mancano fa revert
             uint256 n = contributors.length;
             for (uint256 i = 0; i < n; i++) {
                 address c = contributors[i].addr;
                 uint256 il = contributors[i].initialLocked;
                 uint256 owed = il - unlockedSoFar[c] - alreadyCompensated[c];
-                require(owed == 0, "Outstanding compensation");
+                require(owed == 0, "Unrecovered advance compensation");
             }
-            // Forward residual through the tracked path BEFORE deregistering,
-            // so the comp pool counter reflects any dust. Then self-deregister.
+            
             if (address(this).balance > 0) {
-                lendingPool.addToCompensationPool{
-                    value: address(this).balance
-                }();
+                lendingPool.addToCompensationPool{value: address(this).balance}();
             }
             lendingPool.markLoanClosed();
         } else {
-            // Status.Active — loan still in progress.
+            // status Active
             revert("Loan still active");
         }
 
-        // Final sweep for force-sent ETH (selfdestruct of another contract can
-        // deposit ETH here even without a receive() fallback). Routes to
-        // LendingPool via its receive() — untracked, but parked in a
-        // non-burnable address. In the normal flow this block is a no-op:
-        // Failed already forwarded via addToCompensationPool above, Successful
-        // has zero balance after partialRepay's close sweep.
+        // caso in cui 
         uint256 bal = address(this).balance;
         if (bal > 0) {
             (bool ok, ) = address(lendingPool).call{value: bal}("");
@@ -381,6 +331,9 @@ contract LoanContract {
         emit LoanTerminated(address(this));
     }
 
+
+
+    // funzione che effettua lo split proporzionale di una payment parziale del base amount tra comp pool e contributor
     function _splitBaseForfeit(address c, uint256 share) internal view returns (uint256 toComp, uint256 toC) {
         uint256 unrecoveredAdvance = alreadyCompensated[c] - compRecovered[c]; //  indica i fondi ricevuti dalla cmp pool che devono essere ripagati dall'applicant in caso di loan fallito (anticipo ancora scoperto, ovvero quanto la pool deve ancora rientrare per conto di contributor)
         if (unrecoveredAdvance == 0) { //se non devo dare nulla alla comp pool, tutto va al contributor
