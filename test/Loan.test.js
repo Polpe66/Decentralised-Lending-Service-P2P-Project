@@ -164,9 +164,10 @@ describe("LoanContract", function () {
 
         it("reverts after loan closed (Successful)", async function () {
             const loan = await setupLoan6_4_5();
+            // 5 capitale + 0.5 interesse (RATE=10) per chiudere come Successful.
             await loan
                 .connect(applicant)
-                .partialRepay({ value: ONE_ETH * 5n });
+                .partialRepay({ value: (ONE_ETH * 55n) / 10n });
             await expect(
                 loan.connect(applicant).partialRepay({ value: ONE_ETH })
             ).to.be.revertedWith("Loan closed");
@@ -178,11 +179,13 @@ describe("LoanContract", function () {
     describe("base distribution — no interest", function () {
         it("clean division: distributes shares exactly, no leftover", async function () {
             const loan = await setupLoan6_4_5();
-            // Repay 5 ETH = full base, no interest. Waterfall saturates c1 (3) then c2 (2).
+            // 5 capitale + 0.5 interesse. Base waterfall satura c1(3)+c2(2);
+            // interesse loop satura c1(0.3)+c2(0.2). Loan chiude Successful.
             await loan
                 .connect(applicant)
-                .partialRepay({ value: ONE_ETH * 5n });
+                .partialRepay({ value: (ONE_ETH * 55n) / 10n });
             expect(await loan.remainingLoanAmount()).to.equal(0n);
+            expect(await loan.remainingInterest()).to.equal(0n);
             expect(await loan.status()).to.equal(2n); // Successful
             expect(await pool.lockedValue(c1.address)).to.equal(0n);
             expect(await pool.lockedValue(c2.address)).to.equal(0n);
@@ -214,7 +217,7 @@ describe("LoanContract", function () {
             // Already verified via constructor test; here verify unlockedSoFar tracks per addr
             await loan
                 .connect(applicant)
-                .partialRepay({ value: ONE_ETH * 5n });
+                .partialRepay({ value: (ONE_ETH * 55n) / 10n });
             expect(await loan.unlockedSoFar(c1.address)).to.equal(ONE_ETH * 3n);
             expect(await loan.unlockedSoFar(c2.address)).to.equal(ONE_ETH * 2n);
         });
@@ -225,16 +228,18 @@ describe("LoanContract", function () {
     describe("interest split — gain + collateral", function () {
         it("collateral = interest * pct / 100 → compensationPool", async function () {
             const loan = await setupLoan6_4_5();
-            // pct = 50. Repay 5 base + 1 ETH interest.
-            // collateral = 1 * 50 / 100 = 0.5 ETH. gain = 0.5 ETH.
+            // pct=50, RATE=10, loan=5 -> expectedInterest=0.5, capped.
+            // Pay 5 base + 1 afterBase: interest=0.5 (cap), excess=0.5.
+            // Per-contributor: c1 take=0.3 (coll=0.15, gain=0.15);
+            //                  c2 take=0.2 (coll=0.10, gain=0.10).
+            // collateral totale = 0.25. excess 0.5 -> comp.
+            // Tot comp delta = 0.25 + 0.5 = 0.75 ETH.
             const compBefore = await pool.compensationPool();
             await loan
                 .connect(applicant)
                 .partialRepay({ value: ONE_ETH * 6n });
             const compAfter = await pool.compensationPool();
-            // collateral (0.5) + any gain leftover. With clean math (gain=0.5 split 3:2):
-            // gainShare1 = 0.5 * 3/5 = 0.3, gainShare2 = 0.5 * 2/5 = 0.2. distrib=0.5, leftover=0.
-            expect(compAfter - compBefore).to.equal(ONE_ETH / 2n);
+            expect(compAfter - compBefore).to.equal((ONE_ETH * 75n) / 100n);
         });
 
         it("gain credited directly to contributors (NOT to deposits)", async function () {
@@ -243,7 +248,9 @@ describe("LoanContract", function () {
             const depC2Before = await pool.deposits(c2.address);
             const balC1Before = await ethers.provider.getBalance(c1.address);
             const balC2Before = await ethers.provider.getBalance(c2.address);
-            // 5 base + 1 interest. gain = 0.5. share1=0.3, share2=0.2.
+            // Pay 5 base + 1 afterBase. Interest cap = expectedInterest = 0.5.
+            // c1: take=0.3 -> coll=0.15 (comp), gain=0.15 (wallet).
+            // c2: take=0.2 -> coll=0.10 (comp), gain=0.10 (wallet).
             await loan
                 .connect(applicant)
                 .partialRepay({ value: ONE_ETH * 6n });
@@ -253,54 +260,60 @@ describe("LoanContract", function () {
             // ETH balances increased by gain share
             const balC1After = await ethers.provider.getBalance(c1.address);
             const balC2After = await ethers.provider.getBalance(c2.address);
-            expect(balC1After - balC1Before).to.equal((ONE_ETH * 3n) / 10n);
-            expect(balC2After - balC2Before).to.equal((ONE_ETH * 2n) / 10n);
+            expect(balC1After - balC1Before).to.equal((ONE_ETH * 15n) / 100n);
+            expect(balC2After - balC2Before).to.equal((ONE_ETH * 10n) / 100n);
         });
     });
 
     // ── Close flow on full repay ──────────────────────────────────────────────
 
     describe("close on full repayment", function () {
+        // Successful richiede capitale (5) + interesse atteso (0.5) = 5.5 ETH.
+        const FULL = (ONE_ETH * 55n) / 10n;
+
         it("status → Successful", async function () {
             const loan = await setupLoan6_4_5();
-            await loan
-                .connect(applicant)
-                .partialRepay({ value: ONE_ETH * 5n });
+            await loan.connect(applicant).partialRepay({ value: FULL });
             expect(await loan.status()).to.equal(2n);
         });
 
         it("calls decreaseCollateral on LendingPool", async function () {
             const loan = await setupLoan6_4_5();
             const pctBefore = await pool.collateralPercentage();
-            await loan
-                .connect(applicant)
-                .partialRepay({ value: ONE_ETH * 5n });
+            await loan.connect(applicant).partialRepay({ value: FULL });
             expect(await pool.collateralPercentage()).to.equal(pctBefore - 5n);
         });
 
         it("deregisters loan (markLoanClosed)", async function () {
             const loan = await setupLoan6_4_5();
             expect(await pool.isActiveLoan(loan.target)).to.be.true;
-            await loan
-                .connect(applicant)
-                .partialRepay({ value: ONE_ETH * 5n });
+            await loan.connect(applicant).partialRepay({ value: FULL });
             expect(await pool.isActiveLoan(loan.target)).to.be.false;
         });
 
         it("emits LoanClosed", async function () {
             const loan = await setupLoan6_4_5();
             await expect(
-                loan.connect(applicant).partialRepay({ value: ONE_ETH * 5n })
+                loan.connect(applicant).partialRepay({ value: FULL })
             ).to.emit(loan, "LoanClosed");
         });
 
         it("emits Repayment with remaining=0", async function () {
             const loan = await setupLoan6_4_5();
+            // Event: (base, interestPaid, excess, toCompensation, remainingBase, remainingInterest)
+            // FULL=5.5: base=5, interestPaid=0.5, excess=0, toComp=0.25 (somma coll per-contributor).
             await expect(
-                loan.connect(applicant).partialRepay({ value: ONE_ETH * 5n })
+                loan.connect(applicant).partialRepay({ value: FULL })
             )
                 .to.emit(loan, "Repayment")
-                .withArgs(ONE_ETH * 5n, 0n, 0n, 0n);
+                .withArgs(
+                    ONE_ETH * 5n,
+                    ONE_ETH / 2n,
+                    0n,
+                    ONE_ETH / 4n,
+                    0n,
+                    0n
+                );
         });
     });
 
@@ -331,15 +344,19 @@ describe("LoanContract", function () {
             );
             const loan = LoanFactory.attach(log.args[1]);
 
-            // Repay in two installments (waterfall, no floor leftover on base):
-            // R1: 7 wei → c1 takes 7 (capacity 300k), c2 takes 0. unlockedSoFar c1=7.
-            // R2: 499_993 wei → c1 takes remaining 299_993 (saturates at 300k),
-            //                    c2 takes 200_000 (saturates). Both saturated, loan closes.
-            // No floor dust: each take is an exact integer; residue pass is a no-op.
+            // Repay in tre installments. R1+R2 saturano il capitale; R3 paga interesse
+            // (expectedInterest = L * RATE / 100 = 50_000 wei) per chiudere Successful.
             await loan.connect(applicant).partialRepay({ value: 7n });
             await loan
                 .connect(applicant)
                 .partialRepay({ value: L - 7n });
+            // Dopo R1+R2: remainingLoanAmount=0, status Active (interesse non saldato).
+            expect(await loan.remainingLoanAmount()).to.equal(0n);
+            expect(await loan.status()).to.equal(0n);
+            // R3 paga interesse residuo (50_000 wei) -> close Successful.
+            await loan
+                .connect(applicant)
+                .partialRepay({ value: 50_000n });
 
             // Loan closed
             expect(await loan.status()).to.equal(2n);
@@ -366,9 +383,10 @@ describe("LoanContract", function () {
 
         it("single full repay (no leftover) preserves solvency", async function () {
             const loan = await setupLoan6_4_5();
+            // capitale+interesse = 5.5 ETH per Successful.
             await loan
                 .connect(applicant)
-                .partialRepay({ value: ONE_ETH * 5n });
+                .partialRepay({ value: (ONE_ETH * 55n) / 10n });
             const poolEth = await ethers.provider.getBalance(pool.target);
             const sumDeposits = ONE_ETH * 10n;
             const comp = await pool.compensationPool();
@@ -396,16 +414,19 @@ describe("LoanContract", function () {
     // ── Overpay ───────────────────────────────────────────────────────────────
 
     describe("overpay", function () {
-        it("excess beyond base goes to interest split", async function () {
+        it("excess beyond capital+interest goes entirely to comp pool", async function () {
             const loan = await setupLoan6_4_5();
-            // Pay 10 ETH on a 5 ETH loan. base=5, interest=5.
-            // collateral = 5 * 50/100 = 2.5 → comp. gain = 2.5 → contributors.
+            // 10 ETH su loan 5. base=5, afterBase=5, interest=0.5 (cap=expectedInterest),
+            // excess=4.5. Interest split per-contributor:
+            //   c1 take=0.3 -> coll=0.15, gain=0.15.
+            //   c2 take=0.2 -> coll=0.10, gain=0.10.
+            // interestToComp=0.25. excess=4.5 -> comp. Tot comp delta = 4.75 ETH.
             const compBefore = await pool.compensationPool();
             await loan
                 .connect(applicant)
                 .partialRepay({ value: ONE_ETH * 10n });
             const compAfter = await pool.compensationPool();
-            expect(compAfter - compBefore).to.equal((ONE_ETH * 25n) / 10n);
+            expect(compAfter - compBefore).to.equal((ONE_ETH * 475n) / 100n);
             expect(await loan.status()).to.equal(2n);
         });
     });
@@ -415,9 +436,10 @@ describe("LoanContract", function () {
     describe("gas cost", function () {
         it("partialRepay (close, 2 contributors)", async function () {
             const loan = await setupLoan6_4_5();
+            // 5.5 ETH = capitale + interesse atteso -> Successful.
             const tx = await loan
                 .connect(applicant)
-                .partialRepay({ value: ONE_ETH * 6n });
+                .partialRepay({ value: (ONE_ETH * 55n) / 10n });
             const r = await tx.wait();
             console.log(`\n    Gas partialRepay (close, 2 contrib): ${r.gasUsed}`);
         });
@@ -443,7 +465,10 @@ describe("LoanContract", function () {
             await pool.connect(c1).deposit({ value: ONE_ETH * 6n });
             await pool.connect(c2).deposit({ value: ONE_ETH * 4n });
 
-            // Loan A — 2 ETH borrowed, 4 ETH repaid (collateral 1 → comp pool).
+            // Loan A — 2 ETH borrowed, repaid 3.1 ETH per seedare comp pool con 1 ETH.
+            // Breakdown (RATE=10, pct=50): base=2, afterBase=1.1, interest=0.2 (cap),
+            //   excess=0.9. collateral=0.1 -> comp; gain=0.1 -> wallets contributors;
+            //   excess=0.9 -> comp. Tot comp delta = 1.0 ETH.
             await pool
                 .connect(applicant)
                 .submitProposal(ONE_ETH * 2n, RATE, DURATION, BTC);
@@ -458,7 +483,7 @@ describe("LoanContract", function () {
             const loanA = LoanFactory.attach(logA.args[1]);
             await loanA
                 .connect(applicant)
-                .partialRepay({ value: ONE_ETH * 4n });
+                .partialRepay({ value: (ONE_ETH * 31n) / 10n });
 
             // Loan B — 5 ETH, will expire without repayment.
             await pool
@@ -493,9 +518,10 @@ describe("LoanContract", function () {
 
         it("reverts if loan fully repaid before any failure (Successful)", async function () {
             const loan = await setupFailedLoan();
+            // 5 capitale + 0.5 interesse -> Successful prima della scadenza.
             await loan
                 .connect(applicant)
-                .partialRepay({ value: ONE_ETH * 5n });
+                .partialRepay({ value: (ONE_ETH * 55n) / 10n });
             await mine(Number(DURATION) + 1);
             await expect(
                 loan.connect(c1).requestCompensation()
@@ -889,47 +915,40 @@ describe("LoanContract", function () {
             expect(cumD1).to.equal(600_000n);
         });
 
-        // ── Regression: gain forfeit cap was capping at `outstanding` ─────────
+        // ── Failed loan: no interest to contributors; excess all to comp pool ──
 
-        it("gain forfeit uses constant ratio ac/il (uncapped at outstanding)", async function () {
+        it("Failed loan: overpay routes everything to comp pool (no gain to contributors)", async function () {
             const loan = await setupExpired();
-            // c1 claims 1 ETH (alreadyCompensated=1, initialLocked=3 → ratio=1/3).
+            // c1 claims 1 ETH (alreadyCompensated=1). Transition Active->Failed
+            // azzera remainingInterest. Da qui interest loop e' no-op.
             await loan.connect(c1).requestCompensation();
+            expect(await loan.remainingInterest()).to.equal(0n);
 
-            // Applicant repays 5 base (full) + 10 ETH interest.
-            // Collateral pct on this loan = 45 (loan A decreased it). Wait —
-            // actually loan B was created at pct=45, then c1's claim bumped
-            // the global pct, but the loan keeps its frozen pct=45 from
-            // creation.
-            //
-            // base = 5. interest = 10. collateral = 10*45/100 = 4.5 → comp pool.
-            // gain = 5.5. share c1_gain = 5.5 * 3/5 = 3.3. share c2_gain = 2.2.
-            //
-            // With old (buggy) cap at outstanding: after base loop fully
-            // recovers c1's 1 ETH advance, outstanding = 0 → gComp = 0 (cap).
-            // c1 would get full 3.3 ETH gain. WRONG per spec.
-            //
-            // With fixed gain ratio = ac/il = 1/3: gComp = 3.3 * 1/3 = 1.1.
-            // c1 gets 2.2. Comp pool earns the proportional bonus.
+            // Applicant paga 15 ETH (5 base + 10 afterBase).
+            // - base=5: waterfall. c1 take=3 (outstanding=1, remainingShare=3 ->
+            //   toComp=1, toC=2). c2 take=2 (outstanding=0, toC=2). baseToComp=1.
+            // - afterBase=10: interest=min(10, 0)=0 (Failed), excess=10. interestToComp=0.
+            // - toComp = baseToComp(1) + interestToComp(0) + excess(10) = 11.
+            // - Close branch (wasFailed=true). Stay Failed. Residue pass no-op.
             const compBefore = await pool.compensationPool();
             const c1WalletBefore = await ethers.provider.getBalance(c1.address);
+            const c2WalletBefore = await ethers.provider.getBalance(c2.address);
             await loan
                 .connect(applicant)
                 .partialRepay({ value: ONE_ETH * 15n });
             const c1WalletAfter = await ethers.provider.getBalance(c1.address);
+            const c2WalletAfter = await ethers.provider.getBalance(c2.address);
             const compAfter = await pool.compensationPool();
 
-            // c1 should have received gain portion of 5.5 * 3/5 - 1.1 = 2.2 ETH
-            // via creditInterest (NOT base — base goes through pool).
-            // Allow tiny rounding tolerance.
-            const c1Gain = c1WalletAfter - c1WalletBefore;
-            expect(c1Gain).to.equal((ONE_ETH * 22n) / 10n);
+            // Nessun gain ai contributors da questo partialRepay (loan Failed).
+            expect(c1WalletAfter - c1WalletBefore).to.equal(0n);
+            expect(c2WalletAfter - c2WalletBefore).to.equal(0n);
 
-            // Comp pool: should have grown by collateral (4.5) + c1's gain
-            // forfeit (1.1) + c1's base gap recovery (1 from base toComp +
-            // possibly small residue gap). Lower bound: collateral + 1.1.
-            const compDelta = compAfter - compBefore;
-            expect(compDelta).to.be.gte((ONE_ETH * 56n) / 10n); // 4.5 + 1.1
+            // Comp pool: +11 ETH (1 base forfeit + 10 excess).
+            expect(compAfter - compBefore).to.equal(ONE_ETH * 11n);
+
+            // Loan resta Failed (capitale full repay su Failed non transita a Successful).
+            expect(await loan.status()).to.equal(1n);
         });
     });
 
@@ -939,9 +958,10 @@ describe("LoanContract", function () {
         /// Build a loan, fully repay it → Successful, returns the loan handle.
         async function makeSuccessful() {
             const loan = await setupLoan6_4_5();
+            // capitale (5) + interesse atteso (0.5) -> Successful.
             await loan
                 .connect(applicant)
-                .partialRepay({ value: ONE_ETH * 5n });
+                .partialRepay({ value: (ONE_ETH * 55n) / 10n });
             return loan;
         }
 

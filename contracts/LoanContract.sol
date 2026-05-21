@@ -28,26 +28,32 @@ contract LoanContract {
     address public immutable applicant;
     uint256 public immutable loanedAmount;
     uint256 public immutable collateralPercentage;
+    uint256 public immutable interestRate; // tasso interesse pattuito in proposta (1-100)
+    uint256 public immutable expectedInterest; // interesse totale atteso = loanedAmount * interestRate / 100
     uint256 public immutable expiryBlock;
     ILendingPool public immutable lendingPool; // riferimento al LendingPool
 
     Contributor[] public contributors;
     uint256 public totalInitialLocked; // somma di initialLocked di tutti i contributor, usata per split proporzionali
     mapping(address => uint256) public unlockedSoFar; // fondi sbloccati per ciascun contributor
-    
+
     mapping(address => uint256) public initialLockedOf; // fondi bloccati da ciascun contributor al momento della creazione del loanContract, rimane invariato
 
     mapping(address => uint256) public alreadyCompensated; // fondi ricompensati a ciascun contributor tramite meccanismo compensation pool
-    
+
     mapping(address => uint256) public compRecovered; // fondi che l'applicant paga dopo loan fallito che vanno alla compensation pool
 
-    uint256 public remainingLoanAmount; 
+    mapping(address => uint256) public expectedInterestOf; // quota lorda di interesse (gain+collateral) attesa per ciascun contributor, proporzionale a initialLocked
+    mapping(address => uint256) public interestPaidGrossOf; // quota lorda di interesse già pagata (gain+collateral) per ciascun contributor
+
+    uint256 public remainingLoanAmount;
+    uint256 public remainingInterest; // somma residua di expectedInterestOf - interestPaidGrossOf; azzerata su Active->Failed
     Status public status;
 
-    bool public terminated; 
+    bool public terminated;
 
-    event LoanCreated(address indexed applicant, uint256 loanedAmount, uint256 expiryBlock, uint256 collateralPercentage);
-    event Repayment(uint256 baseAmount, uint256 interestAmount, uint256 toCompensation, uint256 remaining); // toCompesation: eth dirottati alla cmp pool e remaining quanto manca da pagare
+    event LoanCreated(address indexed applicant, uint256 loanedAmount, uint256 expiryBlock, uint256 collateralPercentage, uint256 interestRate, uint256 expectedInterest);
+    event Repayment(uint256 baseAmount, uint256 interestPaid, uint256 excessToComp, uint256 toCompensation, uint256 remainingBase, uint256 remainingInterest);
     event LoanClosed(Status status);
     event MarkedFailed();
     event CompensationRequested(address indexed contributor, uint256 owed, uint256 paid); 
@@ -68,26 +74,36 @@ contract LoanContract {
         _;
     }
 
-    constructor(address _applicant, uint256 _loanedAmount, uint256 _collateralPercentage, uint256 _expiryBlock, address[] memory _contribAddrs, uint256[] memory _contribLocks) payable { // da lendingPool (p.applicant, loanedAmount, collateralPercentage, block.number + p.duration, finalAddrs,finalShares)
+    constructor(address _applicant, uint256 _loanedAmount, uint256 _collateralPercentage, uint256 _interestRate, uint256 _expiryBlock, address[] memory _contribAddrs, uint256[] memory _contribLocks) payable { // da lendingPool (p.applicant, loanedAmount, collateralPercentage, p.interestRate, block.number + p.duration, finalAddrs, finalShares)
         require(_applicant != address(0), "Zero applicant");
         require(_loanedAmount > 0, "Zero loaned");
         require(msg.value == _loanedAmount, "Bad msg.value");
         require(_contribAddrs.length == _contribLocks.length, "Length mismatch");
         require(_contribAddrs.length > 0, "No contributors");
         require( _collateralPercentage >= 1 && _collateralPercentage <= 100, "Bad collateral percentage");
+        require(_interestRate >= 1 && _interestRate <= 100, "Bad interest rate");
 
         applicant = _applicant;
         loanedAmount = _loanedAmount;
         collateralPercentage = _collateralPercentage;
+        interestRate = _interestRate;
+        uint256 _expectedInterest = (_loanedAmount * _interestRate) / 100;
+        expectedInterest = _expectedInterest;
         expiryBlock = _expiryBlock;
         lendingPool = ILendingPool(msg.sender); // msg.sender è il lendingPool che ha creato questo loanContract, è il riferimento che useremo per interagire con il pool, è un cast
+
         uint256 sum = 0;
+        uint256 sumInterest = 0;
         for (uint256 i = 0; i < _contribAddrs.length; i++) {
             require(_contribAddrs[i] != address(0), "Zero contributor");
             require(_contribLocks[i] > 0, "Zero lock");
             require(initialLockedOf[_contribAddrs[i]] == 0, "Duplicate contributor");
             contributors.push(Contributor({addr: _contribAddrs[i], initialLocked: _contribLocks[i]}));
             initialLockedOf[_contribAddrs[i]] = _contribLocks[i];
+            // quota di interesse atteso per c, proporzionale al suo contributo iniziale
+            uint256 ei = (_expectedInterest * _contribLocks[i]) / _loanedAmount;
+            expectedInterestOf[_contribAddrs[i]] = ei;
+            sumInterest += ei;
             sum += _contribLocks[i];
         }
 
@@ -95,13 +111,15 @@ contract LoanContract {
         totalInitialLocked = sum; // la somma di tutti i fondi bloccati dai contributor
 
         remainingLoanAmount = _loanedAmount; // all'inizio il remainingLoanAmount è uguale a totalInitialLocked, poi viene aggiornato
+        // remainingInterest = somma effettiva delle quote per-contributor (puo' essere < expectedInterest per arrotondamento; la dust sara' eventualmente eccesso a comp pool)
+        remainingInterest = sumInterest;
 
         status = Status.Active;
 
         (bool ok, ) = _applicant.call{value: _loanedAmount}(""); // erogazione del prestito all'applicant
         require(ok, "Disburse failed");
 
-        emit LoanCreated(_applicant, _loanedAmount, _expiryBlock, _collateralPercentage);
+        emit LoanCreated(_applicant, _loanedAmount, _expiryBlock, _collateralPercentage, _interestRate, _expectedInterest);
     }
 
 
@@ -117,84 +135,86 @@ contract LoanContract {
     function markFailed() external onlyLendingPool notTerminated {
         require(status == Status.Active, "Not active");
         status = Status.Failed;
+        remainingInterest = 0; // su Failed l'interesse non e' piu' dovuto: futuri pagamenti vanno in eccesso a comp pool
         emit MarkedFailed();
     }
 
 
-    // funzione che gestisce i rimborsi parziali da parte dell'applicant, sia in caso di prestito ancora attivo che in caso di prestito fallito (in questo secondo caso i fondi vanno a coprire il debito residuo e poi alla compensation pool)
+    // Rimborso parziale dell'applicant. Ordine: (1) capitale ai contributors per
+    // ordine decrescente di initialLocked, (2) interesse ai contributors stesso
+    // ordine cap a expectedInterestOf per c, (3) eccesso interamente a comp pool.
+    // Loan diventa Successful solo se capitale e interesse interamente pagati
+    // prima di expiryBlock. Su Failed, remainingInterest e' 0 ed eccesso assorbe tutto.
     function partialRepay() external payable onlyApplicant notTerminated {
         require(status == Status.Active || status == Status.Failed, "Loan closed");
-
         require(msg.value > 0, "Zero value");
-
-        uint256 baseAmount = msg.value > remainingLoanAmount ? remainingLoanAmount : msg.value; // eth mandati sono maggiori di quanto rimane da pagare? Sì: prendo solo quello che serve per chiudere il prestito (remainingLoanAmount), eventuale extra è interesse che va alla compensation pool. No: prendo tutto quello che manda l'applicant.
-        uint256 interest = msg.value - baseAmount; // 0 se msg.value minore uguale a quello che rimane da pagare 
 
         uint256 n = contributors.length;
 
+        // ── 1. Capitale ──────────────────────────────────────────────────────
+        uint256 baseAmount = msg.value > remainingLoanAmount ? remainingLoanAmount : msg.value;
         uint256 baseRemaining = baseAmount;
         uint256 baseToComp = 0;
         if (baseAmount > 0) {
             for (uint256 i = 0; i < n && baseRemaining > 0; i++) {
                 Contributor memory c = contributors[i];
-                uint256 capacity = c.initialLocked - unlockedSoFar[c.addr] - compRecovered[c.addr]; // fondi bloccati all'inizio - fondi sbloccati finora - fondi compensati dalla cmp pool 
+                uint256 capacity = c.initialLocked - unlockedSoFar[c.addr] - compRecovered[c.addr];
                 if (capacity == 0) continue;
                 uint256 take = baseRemaining < capacity ? baseRemaining : capacity;
                 baseRemaining -= take;
-                (uint256 toComp_, uint256 toC_) = _splitBaseForfeit(c.addr, take); // divide la quota `take` tra comp pool e contributor 
+                (uint256 toComp_, uint256 toC_) = _splitBaseForfeit(c.addr, take);
                 if (toComp_ > 0) {
-                    baseToComp += toComp_; // tutti i valori che vanno alla comp pool in questo ciclo vengono accumulati in baseToComp e poi trasferiti in un'unica chiamata a fine ciclo, per ottimizzare le chiamate esterne al pool
+                    baseToComp += toComp_;
                     compRecovered[c.addr] += toComp_;
                 }
                 if (toC_ > 0) {
                     unlockedSoFar[c.addr] += toC_;
-                    lendingPool.repayLockedValue{value: toC_}(c.addr, toC_); // sblocco dei fondi per il contributor c e trasferimento dei fondi sbloccati al pool tramite repayLockedValue
+                    lendingPool.repayLockedValue{value: toC_}(c.addr, toC_);
                 }
             }
         }
 
-        uint256 collateralAmount = (interest * collateralPercentage) / 100; // interesse che copre il collaterale
-        uint256 gain = interest - collateralAmount;
+        // ── 2. Interesse ─────────────────────────────────────────────────────
+        uint256 afterBase = msg.value - baseAmount;
+        uint256 interestAmount = afterBase > remainingInterest ? remainingInterest : afterBase;
+        uint256 excess = afterBase - interestAmount; // tutto oltre il dovuto va a comp pool
+        uint256 interestToComp = 0;
+        uint256 interestDistributed = 0;
 
-        uint256 gainDistributed = 0;
-        uint256 gainToComp = 0;
-        if (gain > 0) {
-            for (uint256 i = 0; i < n; i++) {
-                Contributor memory c = contributors[i];
-                uint256 g = (gain * c.initialLocked) / totalInitialLocked; // quota di gain spettante a c, proporzionale al suo contributo iniziale
-                if (g == 0) continue;
-                gainDistributed += g;
-                (uint256 gComp, uint256 gC) = _splitGainForfeit(c.addr, g);
-                if (gComp > 0) gainToComp += gComp; // tutti i valori di gain che vanno alla comp pool in questo ciclo vengono accumulati in gainToComp e poi trasferiti in un'unica chiamata a fine ciclo, per ottimizzare le chiamate esterne al pool
-                if (gC > 0) lendingPool.creditInterest{value: gC}(c.addr); // accredito dell'interesse al contributor c tramite creditInterest del pool
+        if (interestAmount > 0) {
+            uint256 interestRemaining = interestAmount;
+            for (uint256 i = 0; i < n && interestRemaining > 0; i++) {
+                address ca = contributors[i].addr;
+                uint256 cap = expectedInterestOf[ca] - interestPaidGrossOf[ca];
+                if (cap == 0) continue;
+                uint256 take = interestRemaining < cap ? interestRemaining : cap;
+                interestRemaining -= take;
+                interestPaidGrossOf[ca] += take;
+                interestDistributed += take;
+                // split per-contributor: quota collaterale -> comp pool, gain -> wallet
+                uint256 coll = (take * collateralPercentage) / 100;
+                uint256 gain = take - coll;
+                interestToComp += coll;
+                if (gain > 0) {
+                    lendingPool.creditInterest{value: gain}(ca);
+                }
             }
+            // dust che non ha trovato capacita' (caps esauriti) -> eccesso
+            excess += interestRemaining;
         }
 
-        //DA QUA IN POI 
-        uint256 gainLeftover = gain - gainDistributed; 
+        remainingLoanAmount -= baseAmount;
+        remainingInterest -= interestDistributed;
 
+        uint256 toComp = baseToComp + interestToComp + excess;
 
-        remainingLoanAmount -= baseAmount; 
-
-        uint256 toComp = collateralAmount + gainLeftover + baseToComp + gainToComp;
-
-        if (remainingLoanAmount == 0) {
+        // ── Chiusura: solo se capitale E interesse interamente saldati ───────
+        if (remainingLoanAmount == 0 && remainingInterest == 0) {
             bool wasFailed = status == Status.Failed;
 
-            // Residue pass — defensive close-out per contributor.
-            // Under waterfall, full repay implies every contributor is saturated
-            // (take == capacity) in this or a previous call, and saturation makes
-            // _splitBaseForfeit exact (toComp == outstanding). So in the common
-            // path both `gap` and `residue` below evaluate to zero — the pass is
-            // a no-op. Kept as a defensive cleanup that also handles any future
-            // edge case where dust could survive (e.g. third-party value forwarded
-            // to this contract). Semantics if dust ever exists:
-            //   1. Route un-recovered gap (alreadyCompensated − compRecovered) to
-            //      the comp pool. Refunding to c via repayLockedValue would
-            //      underflow lockedValue because c's lockedValue was already
-            //      decremented by alreadyCompensated at compensation time.
-            //   2. Refund remaining dust (initialLocked − unlockedSoFar −
-            //      compRecovered) to c via repayLockedValue.
+            // Residue pass — defensive close-out per contributor (capitale).
+            // Sotto waterfall il pass e' tipicamente no-op; tenuto per coprire
+            // dust e value forwarded da terzi.
             for (uint256 i = 0; i < n; i++) {
                 address addr = contributors[i].addr;
                 uint256 il = contributors[i].initialLocked;
@@ -211,8 +231,6 @@ contract LoanContract {
                 }
             }
 
-            // Forward this repayment's comp contribution; then sweep any
-            // remaining dust (forfeited residue, overpay, rounding).
             if (toComp > 0) {
                 lendingPool.addToCompensationPool{value: toComp}();
             }
@@ -227,16 +245,14 @@ contract LoanContract {
                 lendingPool.markLoanClosed();
                 emit LoanClosed(Status.Successful);
             }
-            // A failed loan that gets fully repaid stays Failed and stays
-            // registered — contributors may still need to claim compensation
-            // (and any further over-repay routes interest to comp pool).
+            // Failed loan ripagato in capitale resta Failed (interest gia' azzerato a markFailed).
 
-            emit Repayment(baseAmount, interest, toComp + sweep, 0);
+            emit Repayment(baseAmount, interestDistributed, excess, toComp + sweep, 0, 0);
         } else {
             if (toComp > 0) {
                 lendingPool.addToCompensationPool{value: toComp}();
             }
-            emit Repayment(baseAmount, interest, toComp, remainingLoanAmount);
+            emit Repayment(baseAmount, interestDistributed, excess, toComp, remainingLoanAmount, remainingInterest);
         }
     }
 
@@ -256,19 +272,23 @@ contract LoanContract {
     /// back to the comp pool until the advance is recovered (see partialRepay).
     function requestCompensation() external notTerminated {
         // Loan must be "failed" for compensation purposes:
-        //   - Status Active → transition to Failed if expired AND not fully repaid.
+        //   - Status Active → transition to Failed if expired AND outstanding (capitale o interesse).
         //   - Status Failed → already marked, claims always allowed while owed > 0
         //     (even after a late full repayment, since per spec a failed loan can
         //     never become Successful).
         //   - Status Successful → loan was repaid before any failure; no claims.
         require(status != Status.Successful, "Loan successful");
 
+        bool justTransitioned = false;
         if (status == Status.Active) {
             require(block.number > expiryBlock, "Not expired");
-            require(remainingLoanAmount > 0, "Fully repaid");
+            // outstanding = capitale residuo o interesse residuo. Se entrambi 0 il loan sarebbe gia' Successful.
+            require(remainingLoanAmount > 0 || remainingInterest > 0, "Nothing outstanding");
             status = Status.Failed;
+            remainingInterest = 0; // su Failed l'interesse non e' piu' dovuto; pagamenti futuri vanno in eccesso a comp pool
             lendingPool.increaseCollateral();
             emit MarkedFailed();
+            justTransitioned = true;
         }
         // Invariant past this point: status == Status.Failed.
 
@@ -276,7 +296,15 @@ contract LoanContract {
         require(locked > 0, "Not a contributor");
 
         uint256 owed = locked - unlockedSoFar[msg.sender] - alreadyCompensated[msg.sender];
-        require(owed > 0, "Nothing owed");
+        if (owed == 0) {
+            // Su loan gia' Failed (no transizione in questa call) preserviamo
+            // il revert "Nothing owed" per evitare call inutili.
+            require(justTransitioned, "Nothing owed");
+            // Edge case: transizione Active->Failed appena fatta ma caller non ha
+            // capitale residuo da recuperare. Emette evento e ritorna senza payout.
+            emit CompensationRequested(msg.sender, 0, 0);
+            return;
+        }
 
         // Step 2/3 — pay min(owed, comp pool). CEI: read pool balance, update
         // local state, then perform the external transfer. The recipient
@@ -374,17 +402,9 @@ contract LoanContract {
         toC = share - toComp;
     }
 
-    function _splitGainForfeit(address c, uint256 g) internal view returns (uint256 gComp, uint256 gC) {
-        uint256 ac = alreadyCompensated[c];
-        if (ac == 0) {
-            return (0, g);
-        }
-
-        // caso ac>0
-        uint256 il = initialLockedOf[c]; // il è la variabile locale che contiene initialLockedOf[c] per comodità di lettura
-        gComp = (g * ac) / il; // la quota di gain che va alla comp pool è proporzionale alla quota di lockedValue che è stata compensata (ac) rispetto al contributo iniziale (il)
-        if (gComp > g) gComp = g; // la quota di gain che va alla comp pool non può essere maggiore del gain totale da distribuire
-        gC = g - gComp;
-    }
+    // _splitGainForfeit rimosso: con il nuovo modello la distribuzione di gain
+    // avviene solo su loan Active (per cap expectedInterestOf), e su Active
+    // alreadyCompensated[c] e' sempre 0 (la compensazione richiede status Failed),
+    // quindi non serve forfeit del gain.
 
 }

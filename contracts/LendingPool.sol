@@ -266,10 +266,30 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
             finalShares[i] = shares[i];
         }
 
-        address loanAddr = address(new LoanContract{value: loanedAmount}(p.applicant, loanedAmount, collateralPercentage, block.number + p.duration, finalAddrs,finalShares)); // creazione del LoanContract con i fondi del prestito, il costruttore è payable e riceve i fondi direttamente da questo contract, il cast a address è necessario per passare l'indirizzo del nuovo contratto alla mappa isActiveLoan
+        address loanAddr = _deployLoan(p.applicant, loanedAmount, p.interestRate, p.duration, finalAddrs, finalShares);
         isActiveLoan[loanAddr] = true;
         emit LoanRegistered(loanAddr);
         emit ProposalApproved(proposalId, loanAddr, loanedAmount);
+    }
+
+    // helper estratto per evitare "stack too deep" in resolveProposal
+    function _deployLoan(
+        address applicant_,
+        uint256 loanedAmount_,
+        uint8 interestRate_,
+        uint256 duration_,
+        address[] memory finalAddrs,
+        uint256[] memory finalShares
+    ) private returns (address) {
+        return address(new LoanContract{value: loanedAmount_}(
+            applicant_,
+            loanedAmount_,
+            collateralPercentage,
+            interestRate_,
+            block.number + duration_,
+            finalAddrs,
+            finalShares
+        ));
     }
 
    // insertion sort O(n^2), non il migliore ma efficiente e più semplice per n piccoli
