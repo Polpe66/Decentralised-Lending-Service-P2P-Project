@@ -80,7 +80,7 @@ contract LoanContract {
         loanedAmount = _loanedAmount;
         collateralPercentage = _collateralPercentage;
         expiryBlock = _expiryBlock;
-        lendingPool = ILendingPool(msg.sender); // msg.sender è il lendingPool che ha creato questo loanContract, è il riferimento che useremo per interagire con il pool
+        lendingPool = ILendingPool(msg.sender); // msg.sender è il lendingPool che ha creato questo loanContract, è il riferimento che useremo per interagire con il pool, è un cast
         uint256 sum = 0;
         for (uint256 i = 0; i < _contribAddrs.length; i++) {
             require(_contribAddrs[i] != address(0), "Zero contributor");
@@ -92,9 +92,9 @@ contract LoanContract {
         }
 
         require(sum == _loanedAmount, "Sum mismatch"); // somma totale dei fondi bloccati dai contributor deve essere uguale all'importo del prestito, altrimenti c'è un errore nella creazione del loanContract
-        totalInitialLocked = sum;
+        totalInitialLocked = sum; // la somma di tutti i fondi bloccati dai contributor
 
-        remainingLoanAmount = _loanedAmount;
+        remainingLoanAmount = _loanedAmount; // all'inizio il remainingLoanAmount è uguale a totalInitialLocked, poi viene aggiornato
 
         status = Status.Active;
 
@@ -105,8 +105,8 @@ contract LoanContract {
     }
 
 
-
-    function contributorCount() external view returns (uint256) {
+    // funzioni di utility
+    function contributorCount() external view returns (uint256) { 
         return contributors.length;
     }
 
@@ -120,14 +120,15 @@ contract LoanContract {
         emit MarkedFailed();
     }
 
+
     // funzione che gestisce i rimborsi parziali da parte dell'applicant, sia in caso di prestito ancora attivo che in caso di prestito fallito (in questo secondo caso i fondi vanno a coprire il debito residuo e poi alla compensation pool)
     function partialRepay() external payable onlyApplicant notTerminated {
         require(status == Status.Active || status == Status.Failed, "Loan closed");
 
         require(msg.value > 0, "Zero value");
 
-        uint256 baseAmount = msg.value > remainingLoanAmount ? remainingLoanAmount : msg.value;
-        uint256 interest = msg.value - baseAmount;
+        uint256 baseAmount = msg.value > remainingLoanAmount ? remainingLoanAmount : msg.value; // eth mandati sono maggiori di quanto rimane da pagare? Sì: prendo solo quello che serve per chiudere il prestito (remainingLoanAmount), eventuale extra è interesse che va alla compensation pool. No: prendo tutto quello che manda l'applicant.
+        uint256 interest = msg.value - baseAmount; // 0 se msg.value minore uguale a quello che rimane da pagare 
 
         uint256 n = contributors.length;
 

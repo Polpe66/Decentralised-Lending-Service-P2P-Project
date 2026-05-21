@@ -235,7 +235,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         address[] memory addrs = new address[](n); // array dinamico di dimensione massima n (tutti i contributors), compattato da count per passarlo al LoanContract
         uint256[] memory shares = new uint256[](n); // array dinamico di dimensione massima n (tutti i contributors), compattato da count per passarlo al LoanContract
         uint256 count = 0; // contatore di quanti contributors effettivamente partecipano al prestito (share > 0)
-        uint256 loanedAmount = 0; // somma di tutti gli share, dovrebbe essere uguale a p.amount 
+        uint256 loanedAmount = 0; // somma di tutti gli share, dovrebbe essere uguale a p.amount o leggermente inferiore per effetto dell'arrotondamento 
 
         for (uint256 i = 0; i < n; i++) { 
             address c = _contributorList[i];
