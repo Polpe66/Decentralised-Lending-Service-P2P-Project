@@ -148,78 +148,71 @@ def main():
 
     nonce = w3.eth.get_transaction_count(genesis.address) # ottiene il nonce corrente del genesis account, che è il numero di transazioni già inviate da quell'account
 
-    transfers = [ # 
+    # logica finanziamento
+    transfers = [ # costruzione lista trasferimenti ruolo indirizzo importo da inviare
         ("deployer", deployer.address, FUND_DEPLOYER),
         ("oracle_operator", oracle_operator.address, FUND_OPERATOR),
         ("auto_voter", auto_voter.address, FUND_AUTO_VOTER),
     ]
+    # itera sui contributor e applicant creati per aggiungerli alla lista dei trasferimenti, con un'etichetta che indica il ruolo e l'indice (es. contributor[0], applicant[1], ecc.)
     for i, a in enumerate(contributors):
         transfers.append((f"contributor[{i}]", a.address, FUND_CONTRIBUTOR))
     for i, a in enumerate(applicants):
         transfers.append((f"applicant[{i}]", a.address, FUND_APPLICANT))
-
+    
+    # itera per inviare fondi a ogni account nella lista dei trasferimenti 
     for label, addr, amount in transfers:
-        send_eth(w3, genesis_pk, genesis.address, nonce, addr, amount)
+        send_eth(w3, genesis_pk, genesis.address, nonce, addr, amount) # invia una transazione ETH dal genesis account all'indirizzo specificato, con l'importo specificato, usando il nonce corrente e la chiave privata del genesis per firmare
         nonce += 1
         bal = wei_to_eth(w3.eth.get_balance(addr))
-        print(f"  funded {label:<18} {addr}  → {bal:>8.4f} ETH")
+        print(f"  funded {label:<18} {addr}  → {bal:>8.4f} ETH") # stampa una riga di log per ogni trasferimento, indicando il ruolo allineato a sx (<18), l'indirizzo del destinatario e il bilancio aggiornato dopo il trasferimento, formattato con 4 decimali e allineato a destra
 
-    # ── Step 3: deploy BitcoinOracle ──────────────────────────────────────────
-    print("\n── Step 3: deploying BitcoinOracle (sender = oracle_operator) ──")
+    # deploy oracle
+    print("\nStep 3: deploying BitcoinOracle (sender = oracle_operator)")
     oracle_artifact = load_artifact(ORACLE_ARTIFACT)
-    op_nonce = w3.eth.get_transaction_count(oracle_operator.address)
-    oracle_addr, gas_oracle = deploy_contract(
-        w3, oracle_artifact, oracle_operator.key, oracle_operator.address, op_nonce,
-        gas=2_000_000,
-    )
+    op_nonce = w3.eth.get_transaction_count(oracle_operator.address) # ottiene il nonce corrente dell'account oracle_operator, che sarà 0
+    oracle_addr, gas_oracle = deploy_contract(w3, oracle_artifact, oracle_operator.key, oracle_operator.address, op_nonce, gas=2_000_000,) # deploy del contratto BitcoinOracle usando l'account oracle_operator come sender, con un gas limit di 2 milioni. Ritorna l'indirizzo del contratto appena deployato e il gas usato per il deploy
     print(f"  BitcoinOracle deployed at {oracle_addr}  (gas {gas_oracle})")
 
-    # Sanity check: operator address stored
-    oracle_iface = w3.eth.contract(address=oracle_addr, abi=oracle_artifact["abi"])
-    op_read = oracle_iface.functions.operator().call()
-    assert op_read == oracle_operator.address, "operator mismatch"
+    # controlli se oracolo deployato è leggibile 
+    oracle_interface = w3.eth.contract(address=oracle_addr, abi=oracle_artifact["abi"]) # crea un oggetto contratto per interagire con il BitcoinOracle appena deployato, usando l'indirizzo e l'ABI del contratto
+    op_read = oracle_interface.functions.operator().call() # chiama la funzione operator() del contratto per leggere l'indirizzo dell'operatore registrato nell'oracolo
+    assert op_read.lower() == oracle_operator.address.lower(), "operator mismatch" # verifica che l'indirizzo dell'operatore letto dal contratto corrisponda a quello dell'account oracle_operator
 
-    # ── Step 4: deploy LendingPool impl + ERC1967 proxy ───────────────────────
-    print("\n── Step 4: deploying LendingPool implementation + ERC1967Proxy ──")
+    # deploy LendingPool implementation e proxy, usando l'account deployer
+    print("\nStep 4: deploying LendingPool implementation + ERC1967Proxy")
     pool_artifact = load_artifact(POOL_ARTIFACT)
     proxy_artifact = load_artifact(PROXY_ARTIFACT)
 
-    dep_nonce = w3.eth.get_transaction_count(deployer.address)
+    dep_nonce = w3.eth.get_transaction_count(deployer.address) # ottiene il nonce corrente dell'account deployer, che sarà 0
 
-    # 4a — Implementation
-    impl_addr, gas_impl = deploy_contract(
-        w3, pool_artifact, deployer.key, deployer.address, dep_nonce,
-        gas=6_000_000,
-    )
+    # deploy lending pool implementation
+    impl_addr, gas_impl = deploy_contract(w3, pool_artifact, deployer.key, deployer.address, dep_nonce, gas=6_000_000,)
     dep_nonce += 1
     print(f"  implementation: {impl_addr}  (gas {gas_impl})")
 
-    # 4b — Encode initialize(oracleAddress) for proxy constructor
-    impl_iface = w3.eth.contract(address=impl_addr, abi=pool_artifact["abi"])
-    init_data = impl_iface.encode_abi("initialize", args=[oracle_addr])
+    # prepara i dati di inizializzazione per il proxy, che consistono nella chiamata alla funzione initialize(oracle_addr) dell'implementazione del LendingPool, codificata in ABI. Questo perché l'ERC1967Proxy eseguirà una delegatecall all'implementazione con questi dati subito dopo il deploy, per inizializzare lo stato del contratto proxy
+    impl_interface = w3.eth.contract(address=impl_addr, abi=pool_artifact["abi"])
+    init_data = impl_interface.encode_abi("initialize", args=[oracle_addr])
 
-    # 4c — Deploy ERC1967Proxy(impl, initData)
-    proxy_addr, gas_proxy = deploy_contract(
-        w3, proxy_artifact, deployer.key, deployer.address, dep_nonce,
-        impl_addr, init_data,
-        gas=6_000_000,
-    )
+    # deploy del proxy
+    proxy_addr, gas_proxy = deploy_contract(w3, proxy_artifact, deployer.key, deployer.address, dep_nonce, impl_addr, init_data, gas=6_000_000,)
     print(f"  proxy:          {proxy_addr}  (gas {gas_proxy})")
 
-    # Sanity check: read state via proxy (delegatecall path)
-    pool_via_proxy = w3.eth.contract(address=proxy_addr, abi=pool_artifact["abi"])
-    pct = pool_via_proxy.functions.collateralPercentage().call()
-    owner = pool_via_proxy.functions.owner().call()
-    oracle_read = pool_via_proxy.functions.oracle().call()
-    print(
-        f"  proxy state: owner={owner}, collateralPercentage={pct}, oracle={oracle_read}"
-    )
+    # controlli se proxy è leggibile
+    pool_via_proxy = w3.eth.contract(address=proxy_addr, abi=pool_artifact["abi"]) # crea interfaccia del LendingPool usando l'indirizzo del proxy, perché interagiremo con il proxy ma usando l'ABI dell'implementazione (grazie alla delegatecall, le funzioni del proxy corrisponderanno a quelle dell'implementazione)
+    pct = pool_via_proxy.functions.collateralPercentage().call() # chiama la funzione collateralPercentage() del contratto proxy, che tramite delegatecall esegue il codice dell'implementazione e ritorna il valore dello stato collateralPercentage, che dovrebbe essere stato inizializzato a 50 dalla funzione initialize chiamata durante il deploy del proxy
+    owner = pool_via_proxy.functions.owner().call() # chiama la funzione owner() del contratto proxy, che ritorna l'indirizzo del proprietario registrato nello stato del contratto, che dovrebbe essere stato impostato al deployer dalla funzione initialize
+    oracle_read = pool_via_proxy.functions.oracle().call() # chiama la funzione oracle() del contratto proxy, che ritorna l'indirizzo dell'oracolo registrato nello stato del contratto, che dovrebbe essere stato impostato a oracle_addr dalla funzione initialize
+    
+    print(f"  proxy state: owner={owner}, collateralPercentage={pct}, oracle={oracle_read}") # lower() per confrontare gli indirizzi senza case sensitivity
+
     assert pct == 50, "initial collateralPercentage must be 50"
-    assert owner == deployer.address, "owner must be deployer"
+    assert owner.lower() == deployer.address.lower(), "owner must be deployer"
     assert oracle_read.lower() == oracle_addr.lower(), "oracle address mismatch"
 
-    # ── Step 5: write config files ────────────────────────────────────────────
-    print("\n── Step 5: writing config files ──")
+    # scrive i file di config con gli indirizzi dei contratti e degli account creati, per permettere agli altri servizi (oracle_service.py, demo.py, auto_voter.py) di caricare queste informazioni senza hardcodarle. I file sono in JSON e contengono sia gli indirizzi che le chiavi private (in hex) degli account, e per i contratti l'indirizzo e l'ABI necessari per interagire con loro.
+    print("\nStep 5: writing config files")
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     accounts_dict = {
@@ -236,7 +229,7 @@ def main():
             {"address": a.address, "key": a.key.hex()} for a in applicants
         ],
     }
-    ACCOUNTS_FILE.write_text(json.dumps(accounts_dict, indent=2))
+    ACCOUNTS_FILE.write_text(json.dumps(accounts_dict, indent=2)) # scrive il file accounts.json con le informazioni sugli account creati, formattato con indentazione per renderlo leggibile
     print(f"  wrote {ACCOUNTS_FILE}")
 
     ORACLE_INFO_FILE.write_text(
@@ -256,8 +249,8 @@ def main():
     )
     print(f"  wrote {POOL_INFO_FILE}")
 
-    # ── Final summary ─────────────────────────────────────────────────────────
-    print("\n── Final state ──")
+    # stampa lo stato finale con gli indirizzi dei contratti deployati e i bilanci degli account, per verificare che tutto sia andato a buon fine e per avere un riepilogo a colpo d'occhio. I bilanci sono convertiti in ETH per una lettura più comoda, e formattati con 4 decimali e allineati a destra.
+    print("\nFinal state")
     print(f"BitcoinOracle deployed: {oracle_addr}")
     print(f"LendingPool proxy:      {proxy_addr}")
     print(f"LendingPool impl:       {impl_addr}")
