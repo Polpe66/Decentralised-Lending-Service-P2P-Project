@@ -68,56 +68,54 @@ FUND_AUTO_VOTER = float(os.environ.get("FUND_AUTO_VOTER", "5")) # account che si
 FUND_CONTRIBUTOR = float(os.environ.get("FUND_CONTRIBUTOR", "5")) # account che simula un contributor
 FUND_APPLICANT = float(os.environ.get("FUND_APPLICANT", "1")) # account che simula un applicant
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
 
 
+ # utilità
+
+ # carica un file hardhat artifact (ABI + bytecode) e ritorna un dict. Esce con errore se il file non esiste.
 def load_artifact(path: Path) -> dict:
     if not path.exists():
         sys.exit(f"ERROR: artifact not found: {path}\nRun `npx hardhat compile` first.")
     with open(path) as f:
-        return json.load(f)
+        return json.load(f) # trasforma il contenuto del file JSON in un dizionario Python
 
-
+# trasforma un valore in wei (int) a ETH (float) per una lettura più comoda. 1 ETH = 10^18 wei.
 def wei_to_eth(w: int) -> float:
     return w / 1e18
 
-
-def send_eth(w3: Web3, sender_key: bytes, sender_addr: str, nonce: int,
-             to_addr: str, eth_amount: float) -> str:
+# costruisce, firma e invia una transazione ETH semplice (senza dati, quindi non è un contratto call/deploy). Usa la chiave privata del sender per firmare. Ritorna l'hash della transazione.
+def send_eth(w3: Web3, sender_key: bytes, sender_addr: str, nonce: int, to_addr: str, eth_amount: float) -> str: 
     tx = {
-        "to": Web3.to_checksum_address(to_addr),
-        "value": w3.to_wei(eth_amount, "ether"),
-        "gas": 21_000,
-        "gasPrice": w3.eth.gas_price,
-        "nonce": nonce,
-        "chainId": CHAIN_ID,
+        "to": Web3.to_checksum_address(to_addr), # indirizzo del destinatario, convertito in checksum address per sicurezza
+        "value": w3.to_wei(eth_amount, "ether"), # quantità di ETH da inviare, convertita in wei (unità più piccola di ETH)
+        "gas": 21_000, # gas limit standard per una transazione ETH semplice
+        "gasPrice": w3.eth.gas_price, # prezzo del gas corrente sulla rete, ottenuto dal nodo
+        "nonce": nonce, # nonce del sender, deve essere incrementato per ogni transazione inviata dallo stesso account
+        "chainId": CHAIN_ID, # id della chain, per evitare replay attack su altre chain
     }
-    signed = w3.eth.account.sign_transaction(tx, sender_key)
-    h = w3.eth.send_raw_transaction(signed.raw_transaction)
-    w3.eth.wait_for_transaction_receipt(h)
-    return h.hex()
+    signed = w3.eth.account.sign_transaction(tx, sender_key) # firma la transazione con la chiave privata del sender
+    h = w3.eth.send_raw_transaction(signed.raw_transaction) # invia la transazione firmata al nodo
+    w3.eth.wait_for_transaction_receipt(h) # aspetta che la transazione sia inclusa in un blocco e ritorna la ricevuta (receipt)
+    return h.hex() # ritorna l'hash della transazione come stringa esadecimale
 
 
-def deploy_contract(w3: Web3, artifact: dict, deployer_key: bytes,
-                    deployer_addr: str, nonce: int, *constructor_args,
-                    gas: int = 5_000_000) -> tuple[str, int]:
-    Contract = w3.eth.contract(abi=artifact["abi"], bytecode=artifact["bytecode"])
-    tx = Contract.constructor(*constructor_args).build_transaction({
+# costruisce, firma e invia una transazione per il deploy di un contratto. Usa l'ABI e bytecode dell'artifact per costruire la transazione. Ritorna l'indirizzo del contratto appena deployato e il gas usato. Esce con errore se la transazione fallisce (status != 1).
+def deploy_contract(w3: Web3, artifact: dict, deployer_key: bytes, deployer_addr: str, nonce: int, *constructor_args, gas: int = 5_000_000) -> tuple[str, int]:
+    Contract = w3.eth.contract(abi=artifact["abi"], bytecode=artifact["bytecode"]) # crea un oggetto contratto a partire da ABI e bytecode
+    tx = Contract.constructor(*constructor_args).build_transaction({ # codifica argomenti, impacchetta bytecode deploy + parametri tx in un dict
         "from": deployer_addr,
         "nonce": nonce,
         "gas": gas,
         "gasPrice": w3.eth.gas_price,
         "chainId": CHAIN_ID,
     })
-    signed = w3.eth.account.sign_transaction(tx, deployer_key)
-    h = w3.eth.send_raw_transaction(signed.raw_transaction)
-    rcpt = w3.eth.wait_for_transaction_receipt(h)
-    if rcpt.status != 1:
+    signed = w3.eth.account.sign_transaction(tx, deployer_key) # firma la transazione di deploy con la chiave privata del deployer
+    h = w3.eth.send_raw_transaction(signed.raw_transaction) # invia la transazione di deploy al nodo
+    rcpt = w3.eth.wait_for_transaction_receipt(h) # aspetta che la transazione di deploy sia inclusa in un blocco e ritorna la ricevuta (receipt) con informazioni sull'esito del deploy
+    if rcpt.status != 1: # se lo status della transazione è diverso da 1, significa che il deploy è fallito (ad esempio per out of gas o errore nel constructor), quindi esce con un messaggio di errore
         sys.exit(f"ERROR: deployment failed, tx {h.hex()}")
-    return rcpt.contractAddress, rcpt.gasUsed
+    return rcpt.contractAddress, rcpt.gasUsed # se il deploy ha successo, ritorna l'indirizzo del contratto appena deployato e il gas usato per il deploy
 
-
-# ── Main ───────────────────────────────────────────────────────────────────────
 
 
 def main():
