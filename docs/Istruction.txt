@@ -20,6 +20,9 @@ source venv/bin/activate
 python3 scripts/DemoOperations.py
 
 
+4rd terminal
+python3 scripts/AutoVoter.py
+
 ---------------- gas measuraments instructions ----------------
 
 source venv/bin/activate
