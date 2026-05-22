@@ -177,21 +177,21 @@ def listen_to_requests(balances, w3, oracle_contract, operator_account):
 def main():
     balances = parse_blocks()
 
-    w3 = Web3(Web3.HTTPProvider(WEB3_PROVIDER_URI))
-    w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)  # web3.py v7
+    w3 = Web3(Web3.HTTPProvider(WEB3_PROVIDER_URI)) # connessione al nodo Ethereum locale
+    w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)  # iniettare il middleware per gestire i blocchi con extraData più lunghi, come quelli di una rete di test basata su Clique, altrimenti Web3 potrebbe rifiutare i blocchi e non funzionerebbe correttamente
 
     if not w3.is_connected():
         print("Error: impossible connect to Web3.")
         return
 
     if not os.path.exists(CONTRACT_INFO_FILE):
-        print(f"Error: {CONTRACT_INFO_FILE} not found. Run setup.py first.")
+        print(f"Error: {CONTRACT_INFO_FILE} not found. Run InitialSetup.py first.")
         return
 
-    with open(CONTRACT_INFO_FILE, 'r') as f:
+    with open(CONTRACT_INFO_FILE, 'r') as f: # apre il file oracle_contract_info.json in modalità lettura
         contract_info = json.load(f)
 
-    oracle_contract = w3.eth.contract(
+    oracle_contract = w3.eth.contract( # crea un oggetto contratto per interagire con il contratto Oracle, usando l'indirizzo e l'ABI letti dal file di config scritto da setup.py
         address=contract_info['address'],
         abi=contract_info['abi']
     )
