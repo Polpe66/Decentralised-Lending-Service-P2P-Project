@@ -111,70 +111,65 @@ def process_block(block, utxos, balances):
                     balances[addr] = balances.get(addr, 0) - val # aggiorniamo il bilancio dell'indirizzo che deteneva l'UTXO speso, sottraendo il valore dell'UTXO dal bilancio corrente dell'indirizzo (usando get(addr, 0) per gestire il caso in cui l'indirizzo non abbia un bilancio precedente)
 
         # Aggiungi output (crea nuovi UTXO)
-        for n, vout in enumerate(tx.vout):
-            addr = extract_address(vout.scriptPubKey)
+        for n, vout in enumerate(tx.vout): # vout è la lista degli output della transazione, e n è l'indice dell'output nella lista
+            addr = extract_address(vout.scriptPubKey) # proviamo a estrarre l'indirizzo Bitcoin dallo scriptPubKey dell'output usando la funzione extract_address definita sopra, che restituisce una stringa con l'indirizzo se riesce a estrarlo, o None se non è possibile estrarre un indirizzo valido (ad esempio se lo scriptPubKey è di un tipo non supportato)
             if addr:
-                utxos[(txid_hex, n)] = (addr, vout.nValue)
-                balances[addr] = balances.get(addr, 0) + vout.nValue
+                utxos[(txid_hex, n)] = (addr, vout.nValue) # se siamo riusciti a estrarre un indirizzo valido dallo scriptPubKey dell'output, aggiungiamo un nuovo UTXO al dizionario utxos con chiave (txid_hex, n) 
+                balances[addr] = balances.get(addr, 0) + vout.nValue # aggiorniamo il bilancio dell'indirizzo che detiene il nuovo UTXO
 
+# si occupa di fare il parsing del blocco
+def parse_blocks(): 
+    print("Parsing blocks...")
+    all_blocks = load_all_blocks() 
 
-def parse_blocks():
-    """Ricostruisce UTXO set dai blk.dat, elaborando un blocco alla volta in ordine di altezza."""
-    print("Caricamento blocchi...")
-    all_blocks = load_all_blocks()
-
-    print("Ordinamento per altezza...")
+    # ordinamento blocchi
     ordered_blocks = sort_blocks_by_height(all_blocks)
 
-    print("Elaborazione UTXO set (un blocco alla volta)...")
+    print("Processing UTXO set and balances...")
     utxos = {}     # (txid_hex, n) -> (address, satoshi)
     balances = {}  # address -> satoshi
 
     for i, block in enumerate(ordered_blocks):
         process_block(block, utxos, balances)
         if (i + 1) % 10000 == 0:
-            print(f"  Elaborati {i + 1} blocchi...")
+            print(f"  ... ")
 
-    print(f"Parsing completato. Indirizzi con saldo: {len(balances)}")
+    print(f"Parsing completed.")
 
-    # Converti indirizzi stringa in hash bytes32 (come nel contratto Solidity)
-    hashed_balances = {}
+    # Converti indirizzi stringa in hash bytes32 (come nel contratto bitcoinOracle)
+    hashed_balances = {} # btc_address_hash (bytes32) -> balance (satoshi)
     for addr, val in balances.items():
-        if val > 0:
-            addr_hash = Web3.keccak(text=addr)
-            hashed_balances[addr_hash] = val
+        if val > 0: # saldo >0, altrimenti non ha senso riportarlo all'oracolo
+            addr_hash = Web3.keccak(text=addr) # calcolo hash
+            hashed_balances[addr_hash] = val # saldo per determinato hash 
 
-    return hashed_balances
+    return hashed_balances # restituisce dizionario 
 
 
 def listen_to_requests(balances, w3, oracle_contract, operator_account):
-    print("In ascolto di richieste UpdateRequested...")
-    event_filter = oracle_contract.events.UpdateRequested.create_filter(from_block='latest')
+    print("Listening for UpdateRequested events...")
+    event_filter = oracle_contract.events.UpdateRequested.create_filter(from_block='latest') #filtro per eventi di interesse più recente
 
     while True:
         try:
-            for event in event_filter.get_new_entries():
-                btc_address_hash = event['args']['btcAddressHash']
-                requester = event['args']['requester']
-                print(f"Richiesta per hash {btc_address_hash.hex()} da {requester}")
+            for event in event_filter.get_new_entries(): # per ogni nuovo evento UpdateRequested
+                btc_address_hash = event['args']['btcAddressHash'] # estrae hash 
+                requester = event['args']['requester'] # estrae indirizzo di chi ha fatto la richiesta
+                
+                print(f"Hash request: {btc_address_hash.hex()} from: {requester}")
 
-                balance = balances.get(btc_address_hash, 0)
-                print(f"  Saldo: {balance} satoshi")
+                balance = balances.get(btc_address_hash, 0) # cerca il saldo nell dict
+                print(f"  Balance: {balance} satoshi")
 
-                tx = oracle_contract.functions.update(btc_address_hash, balance).build_transaction({
-                    'from': operator_account.address,
-                    'nonce': w3.eth.get_transaction_count(operator_account.address),
-                    'gas': 200000,
-                    'gasPrice': w3.eth.gas_price,
-                })
+                tx = oracle_contract.functions.update(btc_address_hash, balance).build_transaction({'from': operator_account.address, 'nonce': w3.eth.get_transaction_count(operator_account.address), 'gas': 200000,'gasPrice': w3.eth.gas_price, 'chainId': w3.eth.chain_id,}) # costruisce la transazione per chiamare la funzione update del contratto Oracle, passando l'hash dell'indirizzo Bitcoin e il saldo corrispondente, e specificando l'indirizzo dell'operatore come mittente, il nonce corretto per evitare conflitti di transazione, e un limite di gas adeguato per l'esecuzione della funzione
 
-                signed_tx = operator_account.sign_transaction(tx)
-                tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)  # v7 API
-                w3.eth.wait_for_transaction_receipt(tx_hash)
-                print(f"  Update inviato. Tx: {tx_hash.hex()}")
+                signed_tx = operator_account.sign_transaction(tx) # firma la transazione con la chiave privata dell'operatore
+                tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)  # invia la transazione firmata alla rete Ethereum e ottiene l'hash della transazione inviata
+                w3.eth.wait_for_transaction_receipt(tx_hash) # attende che la transazione venga confermata sulla blockchain, bloccando l'esecuzione
+                print(f"  Updated Tx: {tx_hash.hex()}")
 
         except Exception as e:
-            print(f"Errore evento: {e}")
+            print(f"Event error: {e}")
 
         time.sleep(POLL_INTERVAL)
 
@@ -186,11 +181,11 @@ def main():
     w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)  # web3.py v7
 
     if not w3.is_connected():
-        print("Errore: impossibile connettersi a Web3.")
+        print("Error: impossible connect to Web3.")
         return
 
     if not os.path.exists(CONTRACT_INFO_FILE):
-        print(f"Errore: {CONTRACT_INFO_FILE} non trovato. Esegui prima setup.py.")
+        print(f"Error: {CONTRACT_INFO_FILE} not found. Run setup.py first.")
         return
 
     with open(CONTRACT_INFO_FILE, 'r') as f:
@@ -203,11 +198,11 @@ def main():
 
     operator_pk = os.environ.get('OPERATOR_PRIVATE_KEY')
     if not operator_pk:
-        print("Manca OPERATOR_PRIVATE_KEY nell'ambiente.")
+        print("Error: OPERATOR_PRIVATE_KEY not found in environment.")
         return
 
     operator_account = w3.eth.account.from_key(operator_pk)
-    print(f"Operatore: {operator_account.address}")
+    print(f"Operator: {operator_account.address}")
 
     listen_to_requests(balances, w3, oracle_contract, operator_account)
 
