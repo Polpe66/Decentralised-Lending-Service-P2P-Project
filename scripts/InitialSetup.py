@@ -1,28 +1,5 @@
-"""
-scripts/InitialSetup.py — one-shot bootstrap for the P2PBC private chain.
-
-Creates EOA accounts, funds them from the genesis prefunded account, deploys
-BitcoinOracle and LendingPool (behind an ERC1967 UUPS proxy), and writes
-config files consumed by oracle_service.py, the demo/example script, and the
-auto-voter.
-
-Spec compliance (sez 1.5):
-  - "prefunded accounts...can ONLY be used to transfer value to other accounts,
-    they can not be used to deploy contracts or execute other types of
-    transactions" → genesis account here is used ONLY to send ETH to fresh
-    accounts. Every deploy/call goes through one of the new accounts.
-
-Prerequisites:
-  - geth/hardhat node running on RPC_URL (default http://127.0.0.1:8545)
-    with chainId 202526.
-  - Artifacts compiled: run `npx hardhat compile` from the project root.
-  - Keystore + password files present at the expected paths (see constants).
-
-Outputs (under data/):
-  - accounts.json            (all generated accounts + private keys — DO NOT commit)
-  - oracle_contract_info.json (address + abi for BitcoinOracle)
-  - lending_pool_info.json   (proxy/impl addresses + abi for LendingPool)
-"""
+# permette di fare bootstrap della catena privata: crea account EOA, li finanzia, deploy contratti, scrive file di config.
+# Va eseguito una volta all'inizio, prima di lanciare i servizi che dipendono da questi dati (oracle_service.py, demo.py, auto_voter.py).
 
 import json 
 import os 
@@ -119,27 +96,28 @@ def deploy_contract(w3: Web3, artifact: dict, deployer_key: bytes, deployer_addr
 
 
 def main():
-    print(f"Connecting to {RPC_URL}…")
-    w3 = Web3(Web3.HTTPProvider(RPC_URL))
-    if not w3.is_connected():
+    # connessione al nodo
+    print(f"Connecting to {RPC_URL}…") 
+    w3 = Web3(Web3.HTTPProvider(RPC_URL)) # crea client web3 per interagire con il nodo tramite HTTP
+    if not w3.is_connected(): # verifica che il nodo risponda correttamente, altrimenti esce con un messaggio di errore
         sys.exit(f"ERROR: cannot connect to {RPC_URL}")
     node_chain_id = w3.eth.chain_id
-    if node_chain_id != CHAIN_ID:
+    if node_chain_id != CHAIN_ID: # verifica che il chainId del nodo corrisponda a quello atteso, altrimenti esce con un messaggio di errore per evitare di operare sulla chain sbagliata
         sys.exit(
             f"ERROR: chainId mismatch — node reports {node_chain_id}, expected {CHAIN_ID}"
         )
     print(f"Connected. chainId={CHAIN_ID}. Latest block: {w3.eth.block_number}")
 
-    # ── Step 0: cleanup stale artifacts from previous run ─────────────────────
-    print("\n── Step 0: cleaning up stale JSON artifacts ──")
+    # rimozione dei file di output precedenti, se esistono, per evitare confusione
+    print("\nStep 0: cleaning up stale JSON artifacts")
     for f in (ACCOUNTS_FILE, ORACLE_INFO_FILE, POOL_INFO_FILE):
         if f.exists():
             f.unlink()
             print(f"  removed {f.name}")
 
-    # ── Step 1: create accounts ───────────────────────────────────────────────
-    print("\n── Step 1: creating accounts ──")
-    deployer = Account.create()
+    # crea account EOA per i vari ruoli e stampa i loro indirizzi
+    print("\nStep 1: creating accounts")
+    deployer = Account.create() # genera localmente una nuova coppia chiave privata/pubblica in modo casuale e da qua ricava l'indirizzo dell'account, che è l'hash della chiave pubblica
     oracle_operator = Account.create()
     auto_voter = Account.create()
     contributors = [Account.create() for _ in range(N_CONTRIBUTORS)]
@@ -153,26 +131,24 @@ def main():
     for i, a in enumerate(applicants):
         print(f"  applicant[{i}]:  {a.address}")
 
-    # ── Step 2: unlock genesis + fund accounts ────────────────────────────────
-    print("\n── Step 2: funding from genesis prefunded account ──")
+    # finanzia gli account creati dal genesis prefunded account, usando la chiave privata del keystore per firmare le transazioni. Stampa i bilanci dopo il funding
+    print("\nStep 2: funding from genesis prefunded account")
     if not PASSWORD_FILE.exists():
         sys.exit(f"ERROR: password file missing: {PASSWORD_FILE}")
     if not KEYSTORE_PATH.exists():
         sys.exit(f"ERROR: keystore missing: {KEYSTORE_PATH}")
 
     password = PASSWORD_FILE.read_text().strip()
-    keystore_json = KEYSTORE_PATH.read_text()
+    keystore_json = KEYSTORE_PATH.read_text() # legge il contenuto del file keystore, che è un JSON che contiene la chiave privata cifrata e altre informazioni necessarie per decriptarla
     print(f"  unlocking keystore for genesis account…")
-    genesis_pk = Account.decrypt(keystore_json, password)
-    genesis = Account.from_key(genesis_pk)
+    genesis_pk = Account.decrypt(keystore_json, password) # decripta il file keystore usando la password per ottenere la chiave privata del genesis account
+    genesis = Account.from_key(genesis_pk) # ricava l'indirizzo del genesis account a partire dalla chiave privata, per poterlo usare come sender delle transazioni di funding
     print(f"  genesis: {genesis.address}")
-    print(
-        f"  genesis balance: {wei_to_eth(w3.eth.get_balance(genesis.address)):,.4f} ETH"
-    )
+    print(f"  genesis balance: {wei_to_eth(w3.eth.get_balance(genesis.address)):,.4f} ETH") # stampa il bilancio del genesis account in ETH, convertendo da wei e formattando con 4 decimali e separatore delle migliaia
 
-    nonce = w3.eth.get_transaction_count(genesis.address)
+    nonce = w3.eth.get_transaction_count(genesis.address) # ottiene il nonce corrente del genesis account, che è il numero di transazioni già inviate da quell'account
 
-    transfers = [
+    transfers = [ # 
         ("deployer", deployer.address, FUND_DEPLOYER),
         ("oracle_operator", oracle_operator.address, FUND_OPERATOR),
         ("auto_voter", auto_voter.address, FUND_AUTO_VOTER),
