@@ -24,24 +24,23 @@ Outputs (under data/):
   - lending_pool_info.json   (proxy/impl addresses + abi for LendingPool)
 """
 
-import json
-import os
+import json 
+import os 
 import sys
 from pathlib import Path
 
 from eth_account import Account
 from web3 import Web3
 
-# ── Paths ──────────────────────────────────────────────────────────────────────
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = PROJECT_ROOT / "data"
-KEYSTORE_PATH = (
+# Path
+PROJECT_ROOT = Path(__file__).resolve().parent.parent # rende il percorso assoluto passando da scripts e arriva alla cartella principale del progetto
+DATA_DIR = PROJECT_ROOT / "data" # inserisce i file di output nella cartella data, che viene creata se non esiste
+KEYSTORE_PATH = ( # path file keystore
     DATA_DIR
     / "keystore"
     / "UTC--2026-05-05T14-09-10.723312492Z--d278d247a52c550508ea2b2c9321d816238fb523"
 )
-PASSWORD_FILE = PROJECT_ROOT / "0xd278d247A52C550508ea2b2C9321d816238fb523psw.txt"
+PASSWORD_FILE = PROJECT_ROOT / "0xd278d247A52C550508ea2b2C9321d816238fb523psw.txt" # path pw
 
 ARTIFACTS = PROJECT_ROOT / "artifacts"
 ORACLE_ARTIFACT = ARTIFACTS / "contracts" / "BitcoinOracle.sol" / "BitcoinOracle.json"
@@ -54,20 +53,20 @@ ACCOUNTS_FILE = DATA_DIR / "accounts.json"
 ORACLE_INFO_FILE = DATA_DIR / "oracle_contract_info.json"
 POOL_INFO_FILE = DATA_DIR / "lending_pool_info.json"
 
-# ── Config (env-overridable) ───────────────────────────────────────────────────
+# config 
 
-RPC_URL = os.environ.get("RPC_URL", "http://127.0.0.1:8545")
-CHAIN_ID = int(os.environ.get("CHAIN_ID", "202526"))
+RPC_URL = os.environ.get("RPC_URL", "http://127.0.0.1:8545") #  edpoint RPC del nodo geth/hardhat a cui connettersi
+CHAIN_ID = int(os.environ.get("CHAIN_ID", "202526")) # id della chain, deve corrispondere a quella del nodo 
 
-N_CONTRIBUTORS = int(os.environ.get("N_CONTRIBUTORS", "3"))
-M_APPLICANTS = int(os.environ.get("M_APPLICANTS", "2"))
+N_CONTRIBUTORS = int(os.environ.get("N_CONTRIBUTORS", "3")) # numero di account "contributor" da creare e finanziare
+M_APPLICANTS = int(os.environ.get("M_APPLICANTS", "2")) # numero di account "applicant" da creare
 
-# Funding amounts (ETH)
-FUND_DEPLOYER = float(os.environ.get("FUND_DEPLOYER", "10"))
-FUND_OPERATOR = float(os.environ.get("FUND_OPERATOR", "1"))
-FUND_AUTO_VOTER = float(os.environ.get("FUND_AUTO_VOTER", "5"))
-FUND_CONTRIBUTOR = float(os.environ.get("FUND_CONTRIBUTOR", "5"))
-FUND_APPLICANT = float(os.environ.get("FUND_APPLICANT", "1"))
+# quanti ETH genesis deve inviare a ogni account creato
+FUND_DEPLOYER = float(os.environ.get("FUND_DEPLOYER", "10")) # si occupa del deploy dei contratti
+FUND_OPERATOR = float(os.environ.get("FUND_OPERATOR", "1")) # operatore dell'oracolo
+FUND_AUTO_VOTER = float(os.environ.get("FUND_AUTO_VOTER", "5")) # account che simula un voter automatico
+FUND_CONTRIBUTOR = float(os.environ.get("FUND_CONTRIBUTOR", "5")) # account che simula un contributor
+FUND_APPLICANT = float(os.environ.get("FUND_APPLICANT", "1")) # account che simula un applicant
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
