@@ -237,7 +237,7 @@ def main():
     applic_labels = [(f"applicant[{i}]", a) for i, a in enumerate(applicants)] # crea una lista di tuple (label, account) per gli applicant, con label come "applicant[0]", "applicant[1]". Questo viene usato per stampare lo stato degli applicant in modo leggibile durante la demo
 
     # Step 1: stampa stato inziale
-    banner("Step 1/16 - initial balances")
+    banner("Step 1/16 - initial balances") 
     print_pool_state(pool, "initial")
     section("contributors")
     print_contributor_state(w3, pool, contrib_labels)
@@ -254,31 +254,26 @@ def main():
     section("contributors")
     print_contributor_state(w3, pool, contrib_labels)
 
-    # ── Step 3: partial withdraw ──────────────────────────────────────────────
-    banner("Step 3/16 — partial withdraw (contrib[0])")
+    # Step 3: prelievo parziale del primo contributor
+    banner("Step 3/16 - partial withdraw (contrib[0])")
     c0 = contributors[0]
-    print(f"  pre  disposable[c0]: {fmt_eth(pool.functions.disposableValue(c0.address).call())}")
-    print(f"  → withdraw {fmt_eth(WITHDRAW_WEI)}")
-    rcpt = send_tx(w3, c0, pool.functions.withdraw(WITHDRAW_WEI), gas=200_000)
+    print(f"  pre-disposable[c0]: {fmt_eth(pool.functions.disposableValue(c0.address).call())}") # mostra il valore disponibile per il prelievo prima dell'operazione di withdraw, che dovrebbe essere pari al deposito iniziale (1 ether) dato che non ci sono ancora prestiti attivi
+    print(f"  -> withdraw {fmt_eth(WITHDRAW_WEI)}") # 0.3 ether
+    rcpt = send_tx(w3, c0, pool.functions.withdraw(WITHDRAW_WEI), gas=200_000) # chiamata alla funzione withdraw
     print_events(rcpt, pool, ["Withdrawn"])
-    print(f"  post disposable[c0]: {fmt_eth(pool.functions.disposableValue(c0.address).call())}")
+    print(f"  post-disposable[c0]: {fmt_eth(pool.functions.disposableValue(c0.address).call())}")
     print_pool_state(pool, "after withdraw")
     section("contributors")
     print_contributor_state(w3, pool, contrib_labels)
 
-    # ── Step 4: oracle update for BTC address ─────────────────────────────────
-    banner("Step 4/16 — oracle update request")
-    min_fee = oracle.functions.MIN_ORACLE_FEE().call()
+    # Step 4: update oracle
+    banner("Step 4/16 - oracle update request")
+    min_fee = oracle.functions.MIN_ORACLE_FEE().call() # mostra la fee minima richiesta dall'oracolo per processare una richiesta di aggiornamento del balance
     print(f"  MIN_ORACLE_FEE: {fmt_wei(min_fee)}")
-    block_before = w3.eth.block_number
-    print(f"  → applicant[0] requestOracleUpdate(btcHash) fee={fmt_wei(min_fee)}")
-    rcpt = send_tx(
-        w3, a0,
-        pool.functions.requestOracleUpdate(btc_hash),
-        value=min_fee,
-        gas=200_000,
-    )
-    print_events(rcpt, oracle, ["UpdateRequested"])
+    block_before = w3.eth.block_number # salva il numero del blocco prima di inviare la richiesta all'oracolo, in modo da poter filtrare gli eventi a partire da quel blocco
+    print(f"  -> applicant[0] requestOracleUpdate(btcHash) fee={fmt_wei(min_fee)}")
+    rcpt = send_tx(w3, a0, pool.functions.requestOracleUpdate(btc_hash), value=min_fee, gas=200_000,) # invia la richiesta di aggiornamento all'oracolo, pagando la fee minima
+    print_events(rcpt, oracle, ["UpdateRequested"]) # mostra evento UpdateRequested emesso dall'oracolo in risposta alla richiesta
     print(f"  waiting for off-chain oracle_service to publish BalanceUpdated…")
     ev = wait_for_balance_updated(w3, oracle, block_before, btc_hash, ORACLE_EVENT_TIMEOUT_S)
     sats = ev["args"]["newBalance"]
