@@ -153,8 +153,8 @@ def print_applicant_state(w3, accounts):
         bal = w3.eth.get_balance(acc.address)
         print(f"    {label:<14} {acc.address}  wallet={fmt_eth(bal)}")
 
+# aspetta che l'oracolo off-chain aggiorni il balance per un dato btcHash, controllando periodicamente i log dell'evento BalanceUpdated. Se l'evento viene trovato entro il timeout, restituisce l'evento; altrimenti termina con un errore. Questa funzione è usata dopo aver richiesto un aggiornamento all'oracolo
 def wait_for_balance_updated(w3, oracle, from_block, btc_hash, timeout_s):
-    """Poll via eth_getLogs (works on every JSON-RPC node; no filter state required)."""
     deadline = time.time() + timeout_s
     while time.time() < deadline:
         try:
@@ -167,16 +167,14 @@ def wait_for_balance_updated(w3, oracle, from_block, btc_hash, timeout_s):
         if logs:
             return logs[-1]
         time.sleep(2)
-    sys.exit(
-        f"ERROR: timed out after {timeout_s}s waiting for BalanceUpdated "
-        f"(btcHash=0x{btc_hash.hex()}). Is oracle_service.py running?"
-    )
+    sys.exit(f"ERROR: timed out after {timeout_s}s waiting for BalanceUpdated "f"(btcHash=0x{btc_hash.hex()}). Is oracle_service.py running?")
 
+# funzione che restituisce l'indirizzo del loan contract e l'importo del prestito a seguito del deploy di un nuovo smart contract loan dopo l'approvazione di una proposta (evento proposalApproved). Si estrae indirizzo dall'evento che viene usato dalla demo per interagire con il loan
 def lookup_loan_address(rcpt, pool):
     for ev in parse_events(rcpt, pool, "ProposalApproved"):
         return ev["args"]["loanContract"], ev["args"]["loanedAmount"]
     return None, None
-
+# funzione per stampare lo stato di un loan contract, mostrando i dettagli del prestito e lo stato di ogni contributore associato al prestito (locked, unlocked, compensato, ecc). Questi valori vengono letti dal contratto del loan usando le funzioni corrispondenti
 def print_loan_state(loan, label=""):
     n = loan.functions.contributorCount().call()
     print(f"  [{label} loan state @ {loan.address}]")
@@ -185,22 +183,16 @@ def print_loan_state(loan, label=""):
     print(f"    collateralPercentage : {loan.functions.collateralPercentage().call()}")
     print(f"    expiryBlock          : {loan.functions.expiryBlock().call()}")
     print(f"    remainingLoanAmount  : {fmt_eth(loan.functions.remainingLoanAmount().call())}")
-    print(f"    status               : {loan.functions.status().call()} "
-          "(0=Active, 1=Failed, 2=Successful)")
+    print(f"    status               : {loan.functions.status().call()} " "(0=Active, 1=Failed, 2=Successful)")
     print(f"    contributorCount     : {n}")
     for i in range(n):
         addr, locked = loan.functions.contributors(i).call()
         ac = loan.functions.alreadyCompensated(addr).call()
         cr = loan.functions.compRecovered(addr).call()
         us = loan.functions.unlockedSoFar(addr).call()
-        print(
-            f"      #{i} {addr}  initialLocked={fmt_eth(locked)}"
-            f"  unlockedSoFar={fmt_eth(us)}  alreadyCompensated={fmt_eth(ac)}"
-            f"  compRecovered={fmt_eth(cr)}"
-        )
+        print(f"      #{i} {addr}  initialLocked={fmt_eth(locked)}"f"  unlockedSoFar={fmt_eth(us)}  alreadyCompensated={fmt_eth(ac)}"f"  compRecovered={fmt_eth(cr)}")
 
-# ── Main ───────────────────────────────────────────────────────────────────────
-
+# main della demo, 16 steps
 def main():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     log_handle = open(LOG_FILE, "w")
