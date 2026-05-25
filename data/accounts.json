@@ -1,38 +1,38 @@
 {
   "deployer": {
-    "address": "0x6AA9C5173c6A0Aa8A2dCcDB457B56CAE6176AcAC",
-    "key": "f712a33c2f71e5e5fb2f62549e10c9ba2d57ac60da3b5aca5186d0ecc537f478"
+    "address": "0xf28dB717CfeF928B9fA96a15f58789ca36d46eD7",
+    "key": "f6cbe1d663dee12960b1b61a594cb8209a00605366d29f188cb900a9d619a34a"
   },
   "oracle_operator": {
-    "address": "0x24B7F174bdd0bcA66c65B0e2faf46e11a32C730c",
-    "key": "d4f8b2d4d87fb44c6ef854b6f831983cc433ed7f516421a15669924b393b3993"
+    "address": "0x3b0d98ab2F7Ba7ef26ba7AF77306b5d5b71C5cDF",
+    "key": "c20239e28e8fd510fa133deaa0bb6317f64b1247131e44ea962d9ec8e5c59112"
   },
   "auto_voter": {
-    "address": "0xcBE6FeD871Fb73b1Cb001348ddb15E8c3ade1310",
-    "key": "6a53ecf0c161bc055d6dcf24ee50d526f2dc490fee54ba468f8fc8eb75d5a786"
+    "address": "0xA3a06768F8AC9054169B69303aD76f925045Ec89",
+    "key": "77f17c01ce532380e778b57b84431f6964211e7f4705e1d5ea7c92465d029fd5"
   },
   "contributors": [
     {
-      "address": "0x9851101212F4Ad41ad1F8a62a82A2Be6c7d40fe4",
-      "key": "715edac91753d494f3f5d5397ee109f645b1d8f8372e4eace9e9fcfb5dc3d151"
+      "address": "0x392c95F7e7475dB5B75f2a6B53b47743aA1eFA5d",
+      "key": "0ca1cb35522440f3b2b9ab5605de1a7bde79752a6b9e6b6e0b1496bbc158fed0"
     },
     {
-      "address": "0xe84F2277f25E25147a92f53C0d46c6cc5367c653",
-      "key": "0929a1ed1948064467a2d3d9e50df29744fb4ec76f1a7584ac11fb9f24a3b1f9"
+      "address": "0x95De966286d6526D95E0cD8ae1B375f7A50244f2",
+      "key": "fc4b47696434c6dde8904d2586fcdf2651a8b94eb729126ca9e7c0f6d1dfdb64"
     },
     {
-      "address": "0x82624E42CAC2c8F34d59A0965Ee502CF2C895356",
-      "key": "7356d4e9ee53518ef70a198fe113d142d3ba4768df28489a7d0654cb09926fcd"
+      "address": "0x9A713F23D033629Caf6a5fe17Fc93C447184bf4b",
+      "key": "2ed9b9ca5eda220b5999fb5e3da2e3359a83385947c6e9122aba711b8d13d317"
     }
   ],
   "applicants": [
     {
-      "address": "0x0D99bFBd8da7762B82d83974b2B3aF18916Aca73",
-      "key": "e978218b340d0084f2a9a9a794c879aa6c7edfc9706d45eadcfb098a8f32f128"
+      "address": "0x8871F62D99342450615502cb493Fbe593808F452",
+      "key": "bb101cb6738bb32c0830e3634e2a5e9af6585ebf1f013004cad9cfc3c82e2be9"
     },
     {
-      "address": "0x39d2b23C118D5C9fd073D732Ab7e9c366D0D0927",
-      "key": "787610239e4b25d12994aec7c3b136bc09e0d6f2f4e117fb2db167e4194bfafd"
+      "address": "0x541a4F325736B2fC983E20e82018121BD770B412",
+      "key": "7132eed48d674ac65b8c7c7d3cfa5ca5a490253c3c4ade868ed541eddf8ee9df"
     }
   ]
 }
