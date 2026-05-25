@@ -5,8 +5,8 @@ from pathlib import Path
 from web3 import Web3
 from web3.middleware import ExtraDataToPOAMiddleware
 from bitcoin.core import CBlock
-from bitcoin.core.script import CScript
-from bitcoin.wallet import CBitcoinAddress
+from bitcoin.core.script import CScript, OP_CHECKSIG
+from bitcoin.wallet import CBitcoinAddress, P2PKHBitcoinAddress
 
 SCRIPT_DIR = Path(__file__).resolve().parent # directory dello script oracle_service.py
 PROJECT_ROOT = SCRIPT_DIR.parent # directory principale del progetto, che contiene sia oracle/ che scripts/ e data/
@@ -24,9 +24,23 @@ MAINNET_MAGIC = b'\xf9\xbe\xb4\xd9' # magic number che identifica l'inizio di un
 
 # Funzione di utilità per estrarre l'indirizzo Bitcoin da uno scriptPubKey, restituendo None se non è possibile estrarre un indirizzo valido. Usa la libreria bitcoinlib per interpretare lo scriptPubKey, che sarà in formato base58. Mappa dove vanno i soldi ad un indirizzo da usare come chiave nel dict
 def extract_address(script_pubkey):
+    script = CScript(script_pubkey)
+    # 1) P2PK (<pubkey> OP_CHECKSIG): lo script contiene la pubkey grezza, NON l'hash dell'indirizzo.
+    #    Va intercettato PRIMA di from_scriptPubKey: in python-bitcoinlib 0.12 quel metodo per il P2PK
+    #    restituisce un indirizzo SBAGLIATO. Deriviamo invece l'indirizzo P2PKH dalla pubkey (HASH160),
+    #    cioè la stessa stringa che il requester hasha con keccak. Senza questo i coinbase dei primi
+    #    blocchi (tutti P2PK) venivano persi -> saldi a 0. P2PK = esattamente [pubkey, OP_CHECKSIG] (2 elementi),
+    #    distinto dal P2PKH che ne ha 5, quindi il check su len(ops)==2 non confonde i due tipi.
     try:
-        addr = CBitcoinAddress.from_scriptPubKey(CScript(script_pubkey)) #CScript è una classe che rappresenta uno script Bitcoin, e from_scriptPubKey è un metodo che cerca di interpretare lo script come un indirizzo Bitcoin (P2PKH, P2SH) e restituisce un oggetto CBitcoinAddress se riesce a farlo
-        return str(addr)
+        ops = list(script)
+        if (len(ops) == 2 and ops[1] == OP_CHECKSIG
+                and isinstance(ops[0], (bytes, bytearray)) and len(ops[0]) in (33, 65)):
+            return str(P2PKHBitcoinAddress.from_pubkey(bytes(ops[0])))
+    except Exception:
+        pass
+    # 2) tipi con indirizzo nativo nello script (P2PKH, P2SH, ...): from_scriptPubKey li interpreta direttamente
+    try:
+        return str(CBitcoinAddress.from_scriptPubKey(script))
     except Exception:
         return None
 
