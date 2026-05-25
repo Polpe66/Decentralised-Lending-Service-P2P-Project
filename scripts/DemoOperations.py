@@ -342,20 +342,20 @@ def main():
 
     # Step 10: primo pagamento parziale da parte di applicant[0] PartialRepay
     banner("Step 10/16 - partialRepay (mid)")
-    remaining_before = loan.functions.remainingLoanAmount().call()
+    remaining_before = loan.functions.remainingLoanAmount().call() 
     print(f"  -> applicant[0] partialRepay value={fmt_eth(REPAY1_MID)} "f"(remaining before={fmt_eth(remaining_before)})")
-    rcpt = send_tx(w3, a0, loan.functions.partialRepay(), value=REPAY1_MID, gas=600_000)
-    print_events(rcpt, loan, ["Repayment"])
+    rcpt = send_tx(w3, a0, loan.functions.partialRepay(), value=REPAY1_MID, gas=600_000) # applicant[0] effettua un pagamento parziale chiamando la funzione partialRepay del loan contract, specificando un valore in ether (REPAY1_MID)
+    print_events(rcpt, loan, ["Repayment"]) # mostra evento Repayment emesso dal loan contract in risposta al pagamento parziale
     print_loan_state(loan, "loan1 mid")
     section("contributors after mid repay")
     print_contributor_state(w3, pool, contrib_labels)
     print_pool_state(pool, "post-mid-repay")
 
-    # ── Step 11: partialRepay (close successful) ──────────────────────────────
-    banner("Step 11/16 — partialRepay (close, Successful)")
+    # Step 11: pagamento parziale finale per chiudere il prestito
+    banner("Step 11/16 - partialRepay successfull")
     remaining = loan.functions.remainingLoanAmount().call()
-    interest = (remaining * LOAN1_RATE) // 100  # rate% of remaining principal
-    close_value = remaining + interest
+    interest = (remaining * LOAN1_RATE) // 100  # calcola l'interesse dovuto sul restante del prestito usando il tasso di interesse specificato (LOAN1_RATE)
+    close_value = remaining + interest # calcola il valore totale da pagare per chiudere il prestito, che è la somma del restante del prestito più gli interessi dovuti
     print(f"  remaining={fmt_eth(remaining)}  interest={fmt_eth(interest)} "
           f"({LOAN1_RATE}%)  total send={fmt_eth(close_value)}")
     pct_before = pool.functions.collateralPercentage().call()
