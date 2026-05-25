@@ -31,27 +31,21 @@ BTC_ADDRESS = os.environ.get("BTC_ADDR", "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa") #
 
 ORACLE_EVENT_TIMEOUT_S = int(os.environ.get("ORACLE_TIMEOUT", "120"))
 
-# Demo numeric parameters (wei). Tuned so default InitialSetup funding
-# (FUND_CONTRIBUTOR=5 ETH, FUND_APPLICANT=1 ETH) covers gas + repayments.
-DEPOSITS = [
-    Web3.to_wei(1, "ether"),
-    Web3.to_wei(2, "ether"),
-    Web3.to_wei(3, "ether"),
-]
-WITHDRAW_WEI = Web3.to_wei("0.3", "ether")
+DEPOSITS = [ Web3.to_wei(1, "ether"), Web3.to_wei(2, "ether"), Web3.to_wei(3, "ether"),] # deposit iniziali dei 3 contributor, in wei (1, 2 e 3 ether rispettivamente)
 
-LOAN1_AMOUNT = Web3.to_wei("1", "ether")
-LOAN1_RATE = 20
-LOAN1_DURATION = 40
-REPAY1_MID = Web3.to_wei("0.4", "ether")
-# REPAY1_CLOSE computed at runtime so the loan closes exactly (remaining + interest).
+WITHDRAW_WEI = Web3.to_wei("0.3", "ether") # valore di prelievo parziale da parte del primo contributor come esempio di operazione di withdraw
 
-LOAN2_AMOUNT = Web3.to_wei("0.6", "ether")
-LOAN2_RATE = 30
-LOAN2_DURATION = 15
-LATE_REPAY = Web3.to_wei("0.25", "ether")
+LOAN1_AMOUNT = Web3.to_wei("1", "ether") # valore del primo prestito richiesto da applicant[0], in wei (1 ether)
+LOAN1_RATE = 20 # interesse del primo prestito (20%)
+LOAN1_DURATION = 40 # durata del primo prestito in blocchi
+REPAY1_MID = Web3.to_wei("0.4", "ether")  # primo pagamento parziale da parte di applicant[0]
 
-# ── Stdout dup → file ──────────────────────────────────────────────────────────
+LOAN2_AMOUNT = Web3.to_wei("0.6", "ether") # valore del secondo prestito richiesto da applicant[1]
+LOAN2_RATE = 30 # interesse del secondo prestito (30%)
+LOAN2_DURATION = 15 # durata del secondo prestito in blocchi
+LATE_REPAY = Web3.to_wei("0.25", "ether") # pagamento parziale tardivo da parte di applicant[1]
+
+# parte di scrittura su più stream (console + file log) per tenere traccia di tutte le operazioni ed eventi durante la demo, utile per debug e verifica dei risultati
 
 class Tee:
     def __init__(self, *streams):
@@ -70,40 +64,35 @@ class Tee:
             except ValueError:
                 pass
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
-
+# funzioni di utilità per formattazione
 def banner(title):
     print()
-    print("=" * 72)
+    print("-" * 72)
     print(f"  {title}")
-    print("=" * 72)
+    print("-" * 72)
 
 def section(title):
     print()
-    print(f"── {title} ──")
+    print(f"-- {title} --")
 
+# formatta in valore eth più leggibile
 def fmt_eth(wei):
     return f"{Web3.from_wei(int(wei), 'ether'):.6f} ETH"
 
+# formatta in wei con separatori per migliaia
 def fmt_wei(v):
     return f"{int(v):,} wei"
 
+# carica un file json e termina se il file non esiste
 def load_json(path):
     if not path.exists():
         sys.exit(f"ERROR: missing input file: {path}")
     with open(path) as f:
         return json.load(f)
-
+# funzione per inviare una transazione, legge il nonce, costruisce la transazione, la firma e la invia. Restituisce la receipt se tutto va bene.
 def send_tx(w3, account, fn_call, value=0, gas=600_000):
     nonce = w3.eth.get_transaction_count(account.address)
-    tx = fn_call.build_transaction({
-        "from": account.address,
-        "nonce": nonce,
-        "gas": gas,
-        "gasPrice": w3.eth.gas_price,
-        "value": value,
-        "chainId": CHAIN_ID,
-    })
+    tx = fn_call.build_transaction({"from": account.address, "nonce": nonce, "gas": gas, "gasPrice": w3.eth.gas_price, "value": value, "chainId": CHAIN_ID,})
     signed = w3.eth.account.sign_transaction(tx, account.key)
     h = w3.eth.send_raw_transaction(signed.raw_transaction)
     rcpt = w3.eth.wait_for_transaction_receipt(h)
@@ -111,18 +100,12 @@ def send_tx(w3, account, fn_call, value=0, gas=600_000):
         sys.exit(f"ERROR: tx reverted (hash=0x{h.hex()})")
     return rcpt
 
+# funzione per far avanzare la blockchain di n blocchi, prova a usare 3 metodi diversi (hardhat_mine, evm_mine, wait passivo) per compatibilità con diversi tipi di nodi (Hardhat, Ganache, Clique PoA, ecc.)
 def mine_blocks(w3, n):
-    """Advance n blocks.
-
-    Tries hardhat_mine / evm_mine first (for hardhat/anvil nodes). If neither
-    moves the head (e.g. geth, which mines on its own schedule), falls back to
-    polling block.number until target is reached. With Clique period=10 this
-    can take n * period seconds.
-    """
     if n <= 0:
         return
     target = w3.eth.block_number + n
-    # Try RPC-driven mining first.
+
     for method, args in (("hardhat_mine", [hex(n)]),
                          ("evm_mine", [])):
         try:
