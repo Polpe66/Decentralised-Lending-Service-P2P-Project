@@ -387,7 +387,7 @@ def main():
     pct_after = pool.functions.collateralPercentage().call()
     is_active = pool.functions.isActiveLoan(loan.address).call()
     print(f"  status               : {status}")
-    print(f"  collateralPercentage : {pct_before} → {pct_after}")
+    print(f"  collateralPercentage : {pct_before} -> {pct_after}")
     print(f"  isActiveLoan         : {is_active}")
     print_loan_state(loan, "loan1 closed")
     section("contributors after close (lockedValue restored)")
@@ -396,43 +396,34 @@ def main():
     section("applicants")
     print_applicant_state(w3, applic_labels)
 
-    # ── Step 12: failed-loan scenario — proposal + approval ───────────────────
-    banner("Step 12/16 — failed-loan scenario (proposal 2, applicant[1])")
-    print(f"  → applicant[1] submitProposal(amount={fmt_eth(LOAN2_AMOUNT)}, rate={LOAN2_RATE}%, "
-          f"duration={LOAN2_DURATION}, btcHash)")
-    rcpt = send_tx(
-        w3, a1,
-        pool.functions.submitProposal(LOAN2_AMOUNT, LOAN2_RATE, LOAN2_DURATION, btc_hash),
-        gas=400_000,
-    )
+    # Step 12 scenario di prestito fallito
+    banner("Step 12/16 - failed-loan scenario (proposal 2, applicant[1])")
+    print(f"  -> applicant[1] submitProposal(amount={fmt_eth(LOAN2_AMOUNT)}, rate={LOAN2_RATE}%, "f"duration={LOAN2_DURATION}, btcHash)")
+    rcpt = send_tx(w3, a1, pool.functions.submitProposal(LOAN2_AMOUNT, LOAN2_RATE, LOAN2_DURATION, btc_hash), gas=400_000,) # applicant[1] invia una seconda proposta di prestito al pool
     print_events(rcpt, pool, ["ProposalSubmitted"])
-    submitted = parse_events(rcpt, pool, "ProposalSubmitted")
+    submitted = parse_events(rcpt, pool, "ProposalSubmitted") # estrae l'evento ProposalSubmitted dalla receipt per ottenere i dettagli della seconda proposta appena inviata
     pid2 = submitted[0]["args"]["proposalId"]
-    # All contributors approve
+    # tutti i contributors approvano
     for voter in contributors:
         send_tx(w3, voter, pool.functions.vote(pid2, True), gas=200_000)
         print(f"  vote APPROVE by {voter.address}")
-    mine_blocks(w3, pool.functions.PROPOSAL_VOTING_PERIOD().call() + 1)
-    rcpt = send_tx(w3, a1, pool.functions.resolveProposal(pid2), gas=3_000_000)
+    mine_blocks(w3, pool.functions.PROPOSAL_VOTING_PERIOD().call() + 1) # fa avanzare la blockchain per superare il periodo di voto
+    rcpt = send_tx(w3, a1, pool.functions.resolveProposal(pid2), gas=3_000_000) # applicant[1] risolve la proposta, che dovrebbe essere approvata e portare al deploy di un nuovo loan contract
     print_events(rcpt, pool, ["ProposalApproved"])
-    loan2_addr, loan2_amount = lookup_loan_address(rcpt, pool)
+    loan2_addr, loan2_amount = lookup_loan_address(rcpt, pool) # ottiene l'indirizzo del nuovo loan contract creato dalla risoluzione della seconda proposta che sarà usato per interagire con il prestito fallito nello scenario successivo
     if loan2_addr is None:
-        sys.exit("ERROR: proposal 2 was rejected — demo cannot continue")
+        sys.exit("ERROR: proposal 2 was rejected - demo cannot continue")
     loan2 = w3.eth.contract(address=loan2_addr, abi=loan_abi)
     print(f"  LoanContract (loan2): {loan2_addr}  loanedAmount={fmt_eth(loan2_amount)}")
     print_loan_state(loan2, "loan2 active")
 
-    print(f"\n  applicant[1] does NOT repay. Mining {LOAN2_DURATION + 1} blocks "
-          "to push past expiry…")
+    print(f"\n  applicant[1] does NOT repay. Mining {LOAN2_DURATION + 1} blocks to go past expiry…")
     mine_blocks(w3, LOAN2_DURATION + 1)
-    print(f"  current block: {w3.eth.block_number}  expiryBlock: "
-          f"{loan2.functions.expiryBlock().call()}")
+    print(f"  current block: {w3.eth.block_number}  expiryBlock: "f"{loan2.functions.expiryBlock().call()}")
     print(f"  isExpired: {loan2.functions.isExpired().call()}")
 
-    # ── Step 13: requestCompensation ──────────────────────────────────────────
-    banner("Step 13/16 — requestCompensation (contrib[2], largest stake first)")
-    # Pick the contributor that has the largest initialLocked on loan2 for
-    # waterfall recovery to be visible.
+    # Step 13: richiesta di compensazione da parte del contributor
+    banner("Step 13/16 - requestCompensation (contrib[2])")
     claimer = contributors[2]
     pct_before = pool.functions.collateralPercentage().call()
     comp_pool_before = pool.functions.compensationPool().call()
