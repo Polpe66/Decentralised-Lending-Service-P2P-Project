@@ -223,39 +223,31 @@ def main() -> int:
     if not ensure_contributor(w3, pool, av_addr, av_key):
         return 1
 
-    # Resolve start block
+    # Punto di partenza: di default seguiamo solo le proposte NUOVE (da adesso in poi),
+    # come la vecchia semantica START_BLOCK=latest. Con START_BLOCK="0" si recuperano
+    # anche le proposte già esistenti (utile se l'AutoVoter parte dopo qualche submit).
     if START_BLOCK == "latest":
-        last_block = w3.eth.block_number
+        next_pid = pool.functions.proposalCount().call()
     else:
-        last_block = int(START_BLOCK)
-    log("INFO", "filter", f"start_block={last_block}", "watching ProposalSubmitted")
+        next_pid = int(START_BLOCK)
+    log("INFO", "watch", f"start_pid={next_pid}", "polling proposalCount (state via eth_call)")
 
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
 
-    # Main loop: poll via eth_getLogs (no filter id → resilient to node restarts).
-    # WS subscription (eth_subscribe) would be preferable but geth here listens
-    # on HTTP only; switching to WS requires --ws on the node side.
+    # Main loop: NON usiamo eth_getLogs per scoprire le proposte. Su questo nodo geth le
+    # query di log filtrate per address sono inaffidabili (vedi fix in DemoOperations:
+    # eth_getLogs(address) ritorna vuoto anche se gli eventi esistono). Scopriamo le nuove
+    # proposte leggendo lo STATO con proposalCount() (eth_call, sempre coerente). Per ogni
+    # proposalId nuovo votiamo APPROVE; vote_approve fa i pre-check su status/hasVoted.
     rpc_failures = 0
     while _running:
         try:
-            head = w3.eth.block_number
-            if head >= last_block:
-                events = pool.events.ProposalSubmitted().get_logs(
-                    from_block=last_block, to_block=head
-                )
-                for ev in events:
-                    pid = ev["args"]["proposalId"]
-                    applicant = ev["args"]["applicant"]
-                    amount = ev["args"]["amount"]
-                    log(
-                        "INFO",
-                        "proposal_seen",
-                        f"pid={pid} applicant={applicant} amount={amount}",
-                        f"block={ev['blockNumber']}",
-                    )
-                    vote_approve(w3, pool, av_addr, av_key, pid)
-                last_block = head + 1
+            count = pool.functions.proposalCount().call()
+            for pid in range(next_pid, count):
+                log("INFO", "proposal_seen", f"pid={pid}", f"proposalCount={count}")
+                vote_approve(w3, pool, av_addr, av_key, pid)
+            next_pid = count
             rpc_failures = 0
         except Web3RPCError as e:
             rpc_failures += 1

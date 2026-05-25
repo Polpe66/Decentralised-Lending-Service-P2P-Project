@@ -119,7 +119,9 @@ def print_events(rcpt, contract, names):
         for ev in parse_events(rcpt, contract, name):
             args = dict(ev["args"])
             pretty = {
-                k: (fmt_eth(v) if isinstance(v, int) and v >= 10**12 else v)
+                k: (fmt_eth(v) if isinstance(v, int) and v >= 10**12
+                    else "0x" + v.hex() if isinstance(v, (bytes, bytearray))
+                    else v)
                 for k, v in args.items()
             }
             print(f"    event {name}: {pretty}")
@@ -153,20 +155,19 @@ def print_applicant_state(w3, accounts):
         print(f"    {label:<14} {acc.address}  wallet={fmt_eth(bal)}")
 
 # aspetta che l'oracolo off-chain aggiorni il balance per un dato btcHash, controllando periodicamente i log dell'evento BalanceUpdated. Se l'evento viene trovato entro il timeout, restituisce l'evento; altrimenti termina con un errore. Questa funzione è usata dopo aver richiesto un aggiornamento all'oracolo
-def wait_for_balance_updated(w3, oracle, from_block, btc_hash, timeout_s):
+def wait_for_balance_updated(oracle, btc_hash, timeout_s):
+    # NB: su questo nodo geth le query storiche eth_getLogs filtrate per indirizzo ritornano
+    # vuoto (gli eventi BalanceUpdated esistono ma l'indice log filtrato per address è rotto),
+    # quindi NON aspettiamo l'evento: facciamo polling diretto sullo stato del contratto con
+    # getBalance, che è esattamente il dato che ci serve ed è immune al bug (le eth_call vanno).
     deadline = time.time() + timeout_s
     while time.time() < deadline:
-        try:
-            logs = oracle.events.BalanceUpdated.get_logs(
-                from_block=from_block,
-                argument_filters={"btcAddressHash": btc_hash},
-            )
-        except Exception:
-            logs = []
-        if logs:
-            return logs[-1]
+        sats = oracle.functions.getBalance(btc_hash).call()
+        if sats > 0:
+            return sats
         time.sleep(2)
-    sys.exit(f"ERROR: timed out after {timeout_s}s waiting for BalanceUpdated "f"(btcHash=0x{btc_hash.hex()}). Is oracle_service.py running?")
+    sys.exit(f"ERROR: timed out after {timeout_s}s waiting for oracle balance "
+             f"(btcHash=0x{btc_hash.hex()}). Is oracle_service.py running?")
 
 # funzione che restituisce l'indirizzo del loan contract e l'importo del prestito a seguito del deploy di un nuovo smart contract loan dopo l'approvazione di una proposta (evento proposalApproved). Si estrae indirizzo dall'evento che viene usato dalla demo per interagire con il loan
 def lookup_loan_address(rcpt, pool):
@@ -241,7 +242,7 @@ def main():
     applic_labels = [(f"applicant[{i}]", a) for i, a in enumerate(applicants)] # crea una lista di tuple (label, account) per gli applicant, con label come "applicant[0]", "applicant[1]". Questo viene usato per stampare lo stato degli applicant in modo leggibile durante la demo
 
     # Step 1: stampa stato inziale
-    banner("Step 1/16 - initial balances") 
+    banner("Step 1/20 - initial balances") 
     print_pool_state(pool, "initial")
     section("contributors")
     print_contributor_state(w3, pool, contrib_labels)
@@ -249,7 +250,7 @@ def main():
     print_applicant_state(w3, applic_labels)
 
     # Step 2: deposito dei contributor
-    banner("Step 2/16 - deposits")
+    banner("Step 2/20 - deposits")
     for c, amount in zip(contributors, DEPOSITS):
         print(f"\n  → {c.address} deposit {fmt_eth(amount)}")
         rcpt = send_tx(w3, c, pool.functions.deposit(), value=amount, gas=200_000)
@@ -259,7 +260,7 @@ def main():
     print_contributor_state(w3, pool, contrib_labels)
 
     # Step 3: prelievo parziale del primo contributor
-    banner("Step 3/16 - partial withdraw (contrib[0])")
+    banner("Step 3/20 - partial withdraw (contrib[0])")
     c0 = contributors[0]
     print(f"  pre-disposable[c0]: {fmt_eth(pool.functions.disposableValue(c0.address).call())}") # mostra il valore disponibile per il prelievo prima dell'operazione di withdraw, che dovrebbe essere pari al deposito iniziale (1 ether) dato che non ci sono ancora prestiti attivi
     print(f"  -> withdraw {fmt_eth(WITHDRAW_WEI)}") # 0.3 ether
@@ -271,23 +272,21 @@ def main():
     print_contributor_state(w3, pool, contrib_labels)
 
     # Step 4: aggiornamento oracolo
-    banner("Step 4/16 - oracle update request")
+    banner("Step 4/20 - oracle update request")
     min_fee = oracle.functions.MIN_ORACLE_FEE().call() # mostra la fee minima richiesta dall'oracolo per processare una richiesta di aggiornamento del balance
     print(f"  MIN_ORACLE_FEE: {fmt_wei(min_fee)}")
-    block_before = w3.eth.block_number # salva il numero del blocco prima di inviare la richiesta all'oracolo, in modo da poter filtrare gli eventi a partire da quel blocco
     print(f"  -> applicant[0] requestOracleUpdate(btcHash) fee={fmt_wei(min_fee)}")
     rcpt = send_tx(w3, a0, pool.functions.requestOracleUpdate(btc_hash), value=min_fee, gas=200_000,) # invia la richiesta di aggiornamento all'oracolo, pagando la fee minima
     print_events(rcpt, oracle, ["UpdateRequested"]) # mostra evento UpdateRequested emesso dall'oracolo in risposta alla richiesta
-    print(f"  waiting for off-chain oracle_service to publish BalanceUpdated…")
-    ev = wait_for_balance_updated(w3, oracle, block_before, btc_hash, ORACLE_EVENT_TIMEOUT_S) # aspetta che l'oracolo off-chain aggiorni il balance per il btcHash specificato
-    sats = ev["args"]["newBalance"] # estrae il nuovo balance in satoshi dall'evento BalanceUpdated emesso dall'oracolo
+    print(f"  waiting for off-chain oracle_service to update balance…")
+    sats = wait_for_balance_updated(oracle, btc_hash, ORACLE_EVENT_TIMEOUT_S) # polling diretto su getBalance finché l'oracolo off-chain non aggiorna il saldo per il btcHash
     eth_equiv = oracle.functions.getEthEquivalent(btc_hash).call()
     print(f"  SUCCESS - BalanceUpdated: {sats:,} satoshi  ->  {fmt_eth(eth_equiv)} (BTC/ETH=30)")
     if eth_equiv < LOAN1_AMOUNT:
         sys.exit(f"ERROR: oracle returned ETH equivalent {fmt_eth(eth_equiv)} < loan1 "f"{fmt_eth(LOAN1_AMOUNT)}")
 
     # Step 5: inoltro prima proposta di prestito
-    banner("Step 5/16 - submit proposal 1")
+    banner("Step 5/20 - submit proposal 1")
     print(f"  -> applicant[0] submitProposal(amount={fmt_eth(LOAN1_AMOUNT)}, rate={LOAN1_RATE}%, "f"duration={LOAN1_DURATION}, btcHash)")
     rcpt = send_tx(w3, a0, pool.functions.submitProposal(LOAN1_AMOUNT, LOAN1_RATE, LOAN1_DURATION, btc_hash), gas=400_000,) # applicant[0] invia una proposta di prestito al pool
     print_events(rcpt, pool, ["ProposalSubmitted"])
@@ -303,7 +302,7 @@ def main():
     print(f"  status               : {p[7]} (0=Active)")
 
     # Step 6: votazione
-    banner("Step 6/16 - voting (proposal 1)")
+    banner("Step 6/20 - voting (proposal 1)")
     votes = [(contributors[0], False),
              (contributors[1], True),
              (contributors[2], True)]
@@ -316,7 +315,7 @@ def main():
         print_events(rcpt, pool, ["ProposalVoted"])
 
     # Step 7: far avanzare la blockchain per superare il periodo di voto
-    banner("Step 7/16 - mine PROPOSAL_VOTING_PERIOD + 1 blocks")
+    banner("Step 7/20 - mine PROPOSAL_VOTING_PERIOD + 1 blocks")
     vp = pool.functions.PROPOSAL_VOTING_PERIOD().call() # legge il periodo di voto per le proposte dal contratto del pool, in modo da sapere quanti blocchi devono essere minati per superare il periodo di voto e poter risolvere la proposta
     print(f"  PROPOSAL_VOTING_PERIOD = {vp}; mining {vp + 1} blocks")
     print(f"  block before: {w3.eth.block_number}")
@@ -324,7 +323,7 @@ def main():
     print(f"  block after:  {w3.eth.block_number}")
 
     # Step 8: risoluzione della proposta e deploy del loan contract
-    banner("Step 8/16 - resolve proposal 1")
+    banner("Step 8/20 - resolve proposal 1")
     print(f"  -> applicant[0] resolveProposal({pid1})")
     rcpt = send_tx(w3, a0, pool.functions.resolveProposal(pid1), gas=3_000_000) # applicant[0] chiama la funzione resolveProposal. Se la proposta è approvata ci sarà il deploy di un nuovo LoanContract e l'emissione dell'evento ProposalApproved; se è respinta, emetterà l'evento ProposalRejected
     print_events(rcpt, pool, ["ProposalApproved", "ProposalRejected", "LoanRegistered"])
@@ -336,7 +335,7 @@ def main():
     loan = w3.eth.contract(address=loan_addr, abi=loan_abi) # crea un'istanza del contratto del loan appena creato usando l'indirizzo ottenuto dall'evento ProposalApproved e l'ABI del loan contract
 
     # Step 9: ispezione del nuovo LoanContract
-    banner("Step 9/16 - inspect new LoanContract")
+    banner("Step 9/20 - inspect new LoanContract")
     print_loan_state(loan, "loan1", pool, addr2label) # stato loan contract (status = 0=Active, 1=Failed, 2=Successful)
     section("contributors after lock") 
     print_contributor_state(w3, pool, contrib_labels) # mostra lo stato dei contributor dopo il lock dei fondi per il prestito appena creato
@@ -345,7 +344,7 @@ def main():
     print_pool_state(pool, "post-resolve") # mostra lo stato del pool dopo la risoluzione della proposta, che dovrebbe riflettere il lock dei fondi per il prestito appena creato
 
     # Step 10: primo pagamento parziale da parte di applicant[0] PartialRepay
-    banner("Step 10/16 - partialRepay (mid)")
+    banner("Step 10/20 - partialRepay (mid)")
     remaining_before = loan.functions.remainingLoanAmount().call() 
     print(f"  -> applicant[0] partialRepay value={fmt_eth(REPAY1_MID)} "f"(remaining before={fmt_eth(remaining_before)})")
     rcpt = send_tx(w3, a0, loan.functions.partialRepay(), value=REPAY1_MID, gas=600_000) # applicant[0] effettua un pagamento parziale chiamando la funzione partialRepay del loan contract, specificando un valore in ether (REPAY1_MID)
@@ -356,7 +355,7 @@ def main():
     print_pool_state(pool, "post-mid-repay")
 
     # Step 11: pagamento parziale finale per chiudere il prestito
-    banner("Step 11/16 - partialRepay successfull")
+    banner("Step 11/20 - partialRepay successfull")
     remaining = loan.functions.remainingLoanAmount().call()
     interest = loan.functions.remainingInterest().call()  # interesse ancora dovuto sul prestito INTERO, letto dal contratto (non ricalcolato sul residuo: l'interesse atteso è loanedAmount*rate/100, non remaining*rate/100)
     close_value = remaining + interest # capitale residuo + interesse residuo: serve per azzerare sia remainingLoanAmount che remainingInterest e far scattare la chiusura Successful
@@ -400,7 +399,7 @@ def main():
     print_applicant_state(w3, applic_labels)
 
     # Step 12 scenario di prestito fallito
-    banner("Step 12/16 - failed-loan scenario (proposal 2, applicant[1])")
+    banner("Step 12/20 - failed-loan scenario (proposal 2, applicant[1])")
     print(f"  -> applicant[1] submitProposal(amount={fmt_eth(LOAN2_AMOUNT)}, rate={LOAN2_RATE}%, "f"duration={LOAN2_DURATION}, btcHash)")
     rcpt = send_tx(w3, a1, pool.functions.submitProposal(LOAN2_AMOUNT, LOAN2_RATE, LOAN2_DURATION, btc_hash), gas=400_000,) # applicant[1] invia una seconda proposta di prestito al pool
     print_events(rcpt, pool, ["ProposalSubmitted"])
@@ -426,7 +425,7 @@ def main():
     print(f"  isExpired: {loan2.functions.isExpired().call()}")
 
     # Step 13: richiesta di compensazione da parte del contributor
-    banner("Step 13/16 - requestCompensation (contrib[2])")
+    banner("Step 13/20 - requestCompensation (contrib[2])")
     claimer = contributors[2]
     pct_before = pool.functions.collateralPercentage().call()
     comp_pool_before = pool.functions.compensationPool().call()
@@ -445,7 +444,7 @@ def main():
     print_pool_state(pool, "post-comp-claim")
 
     # Step 14: tentativo di pagamento parziale in ritardo sul prestito fallito
-    banner("Step 14/16 - late partialRepay on Failed loan")
+    banner("Step 14/20 - late partialRepay on Failed loan")
     print(f"  -> applicant[1] partialRepay value={fmt_eth(LATE_REPAY)}")
     rcpt = send_tx(w3, a1, loan2.functions.partialRepay(), value=LATE_REPAY, gas=900_000) # applicant[1] tenta di effettuare un pagamento parziale sul prestito fallito
     print_events(rcpt, loan2, ["Repayment"])
@@ -456,7 +455,7 @@ def main():
     print_pool_state(pool, "post-late-repay")
 
     # Step 15: seconda richiesta di compensazione da parte dello stesso contributor, test pool refillato
-    banner("Step 15/16 - second compensation claim (refilled pool, multi-claim)")
+    banner("Step 15/20 - second compensation claim (refilled pool, multi-claim)")
     pct_before = pool.functions.collateralPercentage().call()
     comp_pool_before = pool.functions.compensationPool().call()
     already_before = loan2.functions.alreadyCompensated(claimer.address).call()
@@ -483,8 +482,102 @@ def main():
     print_contributor_state(w3, pool, contrib_labels)
     print_pool_state(pool, "post-2nd-comp-claim")
 
-    # Step 16: stato finale
-    banner("Step 16/16 - final state")
+    # ===================== SCENARI EXTRA: rami negativi / limite =====================
+    # Coprono rami spec non toccati dagli step 1-15: reject per voto pesato, reject per
+    # liquidità BTC insufficiente, reject per disposable insufficiente, e overpayment con
+    # eccesso versato alla compensation pool. Ogni scenario crea una nuova proposta.
+
+    # Step 16: proposta valida (disposable e liquidità OK) ma BOCCIATA dal voto pesato.
+    # BULLETPROOF anche con AutoVoter attivo: il bot vota sempre APPROVE, quindi la maggioranza
+    # di reject deve reggere ANCHE col suo sì. Facciamo rifiutare i due contributor più grandi
+    # (c1+c2, peso ~4.79): il lato sì resta c0 (+ eventuale bot). Reject regge finché
+    # yes*2 <= totalDisp, cioè (c0 + bot) <= (c1+c2): servirebbe un deposito bot > ~4 ETH per
+    # ribaltarlo (irreale, default 0.1). Senza bot rifiuta a maggior ragione (yes = solo c0).
+    banner("Step 16/20 - EXTRA: proposal rejected by weighted vote")
+    amt = Web3.to_wei("0.5", "ether")  # <= disposable e <= liquidità: a decidere è SOLO il voto
+    print(f"  -> applicant[0] submitProposal(amount={fmt_eth(amt)}, rate=10%, duration=20, btcHash)")
+    rcpt = send_tx(w3, a0, pool.functions.submitProposal(amt, 10, 20, btc_hash), gas=400_000)
+    pid = parse_events(rcpt, pool, "ProposalSubmitted")[0]["args"]["proposalId"]
+    print(f"  proposalId={pid}  totalDisposable={fmt_eth(pool.functions.totalDisposable().call())}")
+    for voter, approve in [(contributors[0], True), (contributors[1], False), (contributors[2], False)]:
+        disp = pool.functions.disposableValue(voter.address).call()
+        print(f"    {voter.address} -> {'APPROVE' if approve else 'REJECT'} (weight={fmt_eth(disp)})")
+        send_tx(w3, voter, pool.functions.vote(pid, approve), gas=200_000)
+    mine_blocks(w3, pool.functions.PROPOSAL_VOTING_PERIOD().call() + 1)
+    rcpt = send_tx(w3, a0, pool.functions.resolveProposal(pid), gas=3_000_000)
+    print_events(rcpt, pool, ["ProposalApproved", "ProposalRejected"])
+    addr, _ = lookup_loan_address(rcpt, pool)
+    print(f"  esito: {'REJECTED - nessun loan (yes pesati <= 50% del disposable)' if addr is None else 'APPROVED ' + addr}")
+
+    # Step 17: reject per CHECK LIQUIDITA' fallito (BTC address mai aggiornato -> saldo 0)
+    banner("Step 17/20 - EXTRA: rejected by failed BTC liquidity check")
+    bad_btc = "1BitcoinEaterAddressDontSendf59kuE"  # indirizzo-bruciato: oracolo non ha mai scritto un saldo -> 0
+    bad_hash = Web3.keccak(text=bad_btc)
+    amt = Web3.to_wei("0.5", "ether")
+    print(f"  BTC addr usato: {bad_btc}")
+    print(f"  oracle eth-equiv = {fmt_eth(oracle.functions.getEthEquivalent(bad_hash).call())}  (< {fmt_eth(amt)} richiesti)")
+    rcpt = send_tx(w3, a0, pool.functions.submitProposal(amt, 10, 20, bad_hash), gas=400_000)
+    pid = parse_events(rcpt, pool, "ProposalSubmitted")[0]["args"]["proposalId"]
+    for voter in contributors:  # tutti APPROVANO: non basta, la liquidità fallisce prima del conteggio voti
+        send_tx(w3, voter, pool.functions.vote(pid, True), gas=200_000)
+    print("    tutti i contributor votano APPROVE")
+    mine_blocks(w3, pool.functions.PROPOSAL_VOTING_PERIOD().call() + 1)
+    rcpt = send_tx(w3, a0, pool.functions.resolveProposal(pid), gas=3_000_000)
+    print_events(rcpt, pool, ["ProposalApproved", "ProposalRejected"])
+    addr, _ = lookup_loan_address(rcpt, pool)
+    print(f"  esito: {'REJECTED - liquidità BTC insufficiente (anche con tutti APPROVE)' if addr is None else 'APPROVED ' + addr}")
+
+    # Step 18: reject per DISPOSABLE insufficiente (amount > fondi disponibili totali).
+    # BULLETPROOF anche con AutoVoter: il bot deposita e alza totalDisposable, quindi scegliamo
+    # un amount (50 ETH) ben oltre il massimo disponibile possibile (contributor ~5.7 + bot al
+    # più ~5 = ~10.7) ma sotto la liquidità BTC (1501 ETH), così la bocciatura scatta sempre sul
+    # controllo disposable (che è il primo) e non su liquidità o voto.
+    banner("Step 18/20 - EXTRA: rejected by insufficient disposable")
+    amt = Web3.to_wei("50", "ether")  # >> qualsiasi totalDisposable possibile, < liquidità 1501 ETH
+    print(f"  totalDisposable={fmt_eth(pool.functions.totalDisposable().call())}  <  amount={fmt_eth(amt)}  (liquidità OK ma fondi insufficienti)")
+    rcpt = send_tx(w3, a0, pool.functions.submitProposal(amt, 10, 20, btc_hash), gas=400_000)
+    pid = parse_events(rcpt, pool, "ProposalSubmitted")[0]["args"]["proposalId"]
+    for voter in contributors:
+        send_tx(w3, voter, pool.functions.vote(pid, True), gas=200_000)
+    print("    tutti i contributor votano APPROVE")
+    mine_blocks(w3, pool.functions.PROPOSAL_VOTING_PERIOD().call() + 1)
+    rcpt = send_tx(w3, a0, pool.functions.resolveProposal(pid), gas=3_000_000)
+    print_events(rcpt, pool, ["ProposalApproved", "ProposalRejected"])
+    addr, _ = lookup_loan_address(rcpt, pool)
+    print(f"  esito: {'REJECTED - disposable < amount (controllo prima del voto)' if addr is None else 'APPROVED ' + addr}")
+
+    # Step 19: OVERPAYMENT - ripaga piu' del dovuto -> l'eccesso finisce in compensationPool
+    banner("Step 19/20 - EXTRA: overpayment -> excess to compensation pool")
+    amt = Web3.to_wei("0.5", "ether")
+    print(f"  -> applicant[0] submitProposal(amount={fmt_eth(amt)}, rate=20%, duration=30, btcHash) + tutti APPROVE")
+    rcpt = send_tx(w3, a0, pool.functions.submitProposal(amt, 20, 30, btc_hash), gas=400_000)
+    pid = parse_events(rcpt, pool, "ProposalSubmitted")[0]["args"]["proposalId"]
+    for voter in contributors:
+        send_tx(w3, voter, pool.functions.vote(pid, True), gas=200_000)
+    mine_blocks(w3, pool.functions.PROPOSAL_VOTING_PERIOD().call() + 1)
+    rcpt = send_tx(w3, a0, pool.functions.resolveProposal(pid), gas=3_000_000)
+    print_events(rcpt, pool, ["ProposalApproved"])
+    loan3_addr, loan3_amt = lookup_loan_address(rcpt, pool)
+    if loan3_addr is None:
+        sys.exit("ERROR: extra overpay proposal rejected unexpectedly")
+    loan3 = w3.eth.contract(address=loan3_addr, abi=loan_abi)
+    base_due = loan3.functions.remainingLoanAmount().call()
+    int_due = loan3.functions.remainingInterest().call()
+    extra = Web3.to_wei("0.2", "ether")
+    pay = base_due + int_due + extra  # base + interesse + eccesso volontario
+    comp_before = pool.functions.compensationPool().call()
+    print(f"  LoanContract (loan3): {loan3_addr}  loanedAmount={fmt_eth(loan3_amt)}")
+    print(f"  dovuto = base {fmt_eth(base_due)} + interesse {fmt_eth(int_due)} = {fmt_eth(base_due + int_due)}")
+    print(f"  -> partialRepay value={fmt_eth(pay)}  (overpay di {fmt_eth(extra)})")
+    rcpt = send_tx(w3, a0, loan3.functions.partialRepay(), value=pay, gas=900_000)
+    print_events(rcpt, loan3, ["Repayment", "LoanClosed"])
+    print_events(rcpt, pool, ["LoanDeregistered", "CollateralPercentageChanged"])
+    comp_after = pool.functions.compensationPool().call()
+    print(f"  compensationPool: {fmt_eth(comp_before)} -> {fmt_eth(comp_after)}  (+{fmt_eth(comp_after - comp_before)} = eccesso + collaterale interesse)")
+    print(f"  loan3 status: {loan3.functions.status().call()} (atteso 2=Successful)  isActiveLoan={pool.functions.isActiveLoan(loan3_addr).call()}")
+
+    # Step 20: stato finale
+    banner("Step 20/20 - final state")
     print_pool_state(pool, "FINAL") # stato finale del pool, che riflette tutte le operazioni effettuate durante la demo (depositi, lock per i prestiti, pagamenti, compensazioni, ecc...)
     section("contributors")
     print_contributor_state(w3, pool, contrib_labels)
@@ -493,6 +586,7 @@ def main():
     section("loan contracts registered")
     print(f"  loan1 ({loan.address}) isActive={pool.functions.isActiveLoan(loan.address).call()}")
     print(f"  loan2 ({loan2.address}) isActive={pool.functions.isActiveLoan(loan2.address).call()}")
+    print(f"  loan3 ({loan3.address}) isActive={pool.functions.isActiveLoan(loan3.address).call()}")
     print(f"  proposalCount        : {pool.functions.proposalCount().call()}")
 
     banner("Demo completed.")
