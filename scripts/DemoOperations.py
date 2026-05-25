@@ -194,16 +194,16 @@ def print_loan_state(loan, label=""):
 
 # main della demo, 16 steps
 def main():
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    log_handle = open(LOG_FILE, "w")
-    sys.stdout = Tee(sys.__stdout__, log_handle)
+    DATA_DIR.mkdir(parents=True, exist_ok=True) # assicura che la cartella per i dati esista, altrimenti la crea
+    log_handle = open(LOG_FILE, "w") # apre il file di log in scrittura, sovrascrivendo eventuali contenuti precedenti.
+    sys.stdout = Tee(sys.__stdout__, log_handle) # permette di scrivere tutto ciò che viene stampato sia sulla console che sul file di log, usando la classe Tee definita sopra 
 
-    banner("DemoOperations — P2PBC Decentralised Lending Service")
+    banner("DemoOperations") 
     print(f"RPC: {RPC_URL}   chainId: {CHAIN_ID}")
     print(f"Log file: {LOG_FILE}")
 
-    # Load config + accounts
-    accounts_data = load_json(ACCOUNTS_FILE)
+# carica i dati di input (account, info dei contratti, artifact del loan) da file JSON. Questi file devono essere preparati in anticipo (initialSetup.py) e devono contenere le informazioni necessarie per la demo
+    accounts_data = load_json(ACCOUNTS_FILE) #
     pool_info = load_json(POOL_INFO_FILE)
     oracle_info = load_json(ORACLE_INFO_FILE)
     loan_artifact = load_json(LOAN_ARTIFACT_FILE)
@@ -213,42 +213,39 @@ def main():
     if len(accounts_data.get("applicants", [])) < 2:
         sys.exit("ERROR: need at least 2 applicants in accounts.json")
 
-    contributors = [Account.from_key(c["key"]) for c in accounts_data["contributors"][:3]]
-    applicants = [Account.from_key(a["key"]) for a in accounts_data["applicants"][:2]]
-    a0, a1 = applicants
+    contributors = [Account.from_key(c["key"]) for c in accounts_data["contributors"][:3]] # crea oggetti Account per i contributor usando le chiavi private fornite nel file accounts.json. Prende solo i primi 3 contributor per la demo
+    applicants = [Account.from_key(a["key"]) for a in accounts_data["applicants"][:2]] # crea oggetti Account per gli applicant usando le chiavi private fornite nel file accounts.json. Prende solo i primi 2 applicant per la demo
+    a0, a1 = applicants # evitiamo di scrivere applicants[0] e applicants[1] ogni volta, dato che li useremo spesso
 
-    # Connect + sanity check
-    w3 = Web3(Web3.HTTPProvider(RPC_URL))
+    w3 = Web3(Web3.HTTPProvider(RPC_URL)) # crea un'instanza di Web3 collegata al nodo Ethereum specificato da RPC_URL
     if not w3.is_connected():
         sys.exit(f"ERROR: cannot connect to {RPC_URL}")
     if w3.eth.chain_id != CHAIN_ID:
-        sys.exit(
-            f"ERROR: chainId mismatch — node={w3.eth.chain_id}, expected={CHAIN_ID}"
-        )
+        sys.exit(f"ERROR: chainId mismatch — node={w3.eth.chain_id}, expected={CHAIN_ID}")
 
-    pool = w3.eth.contract(address=pool_info["proxy"], abi=pool_info["abi"])
-    oracle = w3.eth.contract(address=oracle_info["address"], abi=oracle_info["abi"])
-    loan_abi = loan_artifact["abi"]
+    pool = w3.eth.contract(address=pool_info["proxy"], abi=pool_info["abi"]) # crea un'istanza del contratto del pool usando l'indirizzo e l'ABI forniti nel file lending_pool_info.json 
+    oracle = w3.eth.contract(address=oracle_info["address"], abi=oracle_info["abi"]) # crea un'istanza del contratto dell'oracolo usando l'indirizzo e l'ABI forniti nel file oracle_contract_info.json
+    loan_abi = loan_artifact["abi"] # estrae l'ABI del loan contract dall'artifact JSON compilato, che sarà usato per interagire con i loan contract creati durante la demo
 
     print(f"LendingPool proxy: {pool.address}")
     print(f"BitcoinOracle:     {oracle.address}")
     print(f"BTC address used as liquidity proof: {BTC_ADDRESS}")
-    btc_hash = Web3.keccak(text=BTC_ADDRESS)
-    print(f"  → btcAddressHash = 0x{btc_hash.hex()}")
+    btc_hash = Web3.keccak(text=BTC_ADDRESS) # calcola il keccak hash dell'indirizzo BTC, che viene usato come identificatore per l'oracolo off-chain per associare il balance del BTC alla proposta di prestito
+    print(f"  -> btcAddressHash = 0x{btc_hash.hex()}")
 
-    contrib_labels = [(f"contrib[{i}]", c) for i, c in enumerate(contributors)]
-    applic_labels = [(f"applicant[{i}]", a) for i, a in enumerate(applicants)]
+    contrib_labels = [(f"contrib[{i}]", c) for i, c in enumerate(contributors)] # crea una lista di tuple (label, account) per i contributor, con label come "contrib[0]", "contrib[1]", ecc. Questo viene usato per stampare lo stato dei contributor in modo leggibile durante la demo
+    applic_labels = [(f"applicant[{i}]", a) for i, a in enumerate(applicants)] # crea una lista di tuple (label, account) per gli applicant, con label come "applicant[0]", "applicant[1]". Questo viene usato per stampare lo stato degli applicant in modo leggibile durante la demo
 
-    # ── Step 1: setup balances ────────────────────────────────────────────────
-    banner("Step 1/16 — initial balances")
+    # Step 1: stampa stato inziale
+    banner("Step 1/16 - initial balances")
     print_pool_state(pool, "initial")
     section("contributors")
     print_contributor_state(w3, pool, contrib_labels)
     section("applicants")
     print_applicant_state(w3, applic_labels)
 
-    # ── Step 2: deposits ──────────────────────────────────────────────────────
-    banner("Step 2/16 — deposits")
+    # Step 2: deposito dei contributor
+    banner("Step 2/16 - deposits")
     for c, amount in zip(contributors, DEPOSITS):
         print(f"\n  → {c.address} deposit {fmt_eth(amount)}")
         rcpt = send_tx(w3, c, pool.functions.deposit(), value=amount, gas=200_000)
