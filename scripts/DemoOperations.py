@@ -99,36 +99,22 @@ def send_tx(w3, account, fn_call, value=0, gas=600_000):
     if rcpt.status != 1:
         sys.exit(f"ERROR: tx reverted (hash=0x{h.hex()})")
     return rcpt
-
-# funzione per far avanzare la blockchain di n blocchi, prova a usare 3 metodi diversi (hardhat_mine, evm_mine, wait passivo) per compatibilità con diversi tipi di nodi (Hardhat, Ganache, Clique PoA, ecc.)
+# funzione per far avanzare la blockchain di n blocchi, utile per simulare il passare del tempo e raggiungere scadenze o periodi di voto. La funzione controlla periodicamente il numero di blocco fino a raggiungere il target
 def mine_blocks(w3, n):
     if n <= 0:
         return
     target = w3.eth.block_number + n
-
-    for method, args in (("hardhat_mine", [hex(n)]),
-                         ("evm_mine", [])):
-        try:
-            if method == "evm_mine":
-                for _ in range(n):
-                    w3.provider.make_request(method, [])
-            else:
-                w3.provider.make_request(method, args)
-            if w3.eth.block_number >= target:
-                return
-        except Exception:
-            pass
-    # Passive wait: node mines on its own (e.g. Clique PoA).
-    print(f"    (waiting for chain to reach block {target} — current "
-          f"{w3.eth.block_number} …)")
+    print(f"    (waiting for chain to reach block {target} - current "f"{w3.eth.block_number} …)")
     while w3.eth.block_number < target:
         time.sleep(2)
     print(f"    reached block {w3.eth.block_number}")
 
+# funzione per estrarre e decodificare gli eventi da una receipt, dato il nome dell'evento e il contratto. Restituisce una lista di eventi decodificati. Usa web3.py per processare la receipt e decodificare gli eventi, ignorando eventuali errori di decodifica
 def parse_events(rcpt, contract, event_name):
     ev = getattr(contract.events, event_name)()
     return ev.process_receipt(rcpt, errors=DISCARD)
 
+# funzione per stampare in modo leggibile gli eventi estratti da una receipt, dato il nome dell'evento e il contratto
 def print_events(rcpt, contract, names):
     for name in names:
         for ev in parse_events(rcpt, contract, name):
@@ -139,6 +125,7 @@ def print_events(rcpt, contract, names):
             }
             print(f"    event {name}: {pretty}")
 
+# funzioni per stampare lo stato del pool, dei contributor, degli applicant e dei loan contract in modo leggibile, formattando i valori in ether quando appropriato. Queste funzioni vengono usate in vari step della demo per mostrare l'evoluzione dello stato del sistema dopo ogni operazione significativa.
 def print_pool_state(pool, label=""):
     print(f"  [{label} pool state]")
     print(f"    totalFundingPool : {fmt_eth(pool.functions.totalFundingPool().call())}")
@@ -147,6 +134,7 @@ def print_pool_state(pool, label=""):
     print(f"    compensationPool : {fmt_eth(pool.functions.compensationPool().call())}")
     print(f"    collateralPct    : {pool.functions.collateralPercentage().call()}")
 
+# stampa lo stato di ogni contributor, mostrando il balance del wallet, i depositi, il valore bloccato e il valore disponibile per il withdraw. Questi valori vengono letti dal contratto del pool usando le funzioni corrispondenti
 def print_contributor_state(w3, pool, accounts):
     for label, acc in accounts:
         bal = w3.eth.get_balance(acc.address)
@@ -159,6 +147,7 @@ def print_contributor_state(w3, pool, accounts):
             f"locked={fmt_eth(lock)}  disposable={fmt_eth(disp)}"
         )
 
+# stampa lo stato di ogni applicant, mostrando il balance del wallet. Questi valori vengono letti dal contratto del pool usando le funzioni corrispondenti
 def print_applicant_state(w3, accounts):
     for label, acc in accounts:
         bal = w3.eth.get_balance(acc.address)
