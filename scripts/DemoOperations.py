@@ -266,7 +266,7 @@ def main():
     section("contributors")
     print_contributor_state(w3, pool, contrib_labels)
 
-    # Step 4: update oracle
+    # Step 4: aggiornamento oracolo
     banner("Step 4/16 - oracle update request")
     min_fee = oracle.functions.MIN_ORACLE_FEE().call() # mostra la fee minima richiesta dall'oracolo per processare una richiesta di aggiornamento del balance
     print(f"  MIN_ORACLE_FEE: {fmt_wei(min_fee)}")
@@ -275,15 +275,12 @@ def main():
     rcpt = send_tx(w3, a0, pool.functions.requestOracleUpdate(btc_hash), value=min_fee, gas=200_000,) # invia la richiesta di aggiornamento all'oracolo, pagando la fee minima
     print_events(rcpt, oracle, ["UpdateRequested"]) # mostra evento UpdateRequested emesso dall'oracolo in risposta alla richiesta
     print(f"  waiting for off-chain oracle_service to publish BalanceUpdated…")
-    ev = wait_for_balance_updated(w3, oracle, block_before, btc_hash, ORACLE_EVENT_TIMEOUT_S)
-    sats = ev["args"]["newBalance"]
+    ev = wait_for_balance_updated(w3, oracle, block_before, btc_hash, ORACLE_EVENT_TIMEOUT_S) # aspetta che l'oracolo off-chain aggiorni il balance per il btcHash specificato
+    sats = ev["args"]["newBalance"] # estrae il nuovo balance in satoshi dall'evento BalanceUpdated emesso dall'oracolo
     eth_equiv = oracle.functions.getEthEquivalent(btc_hash).call()
-    print(f"  ✓ BalanceUpdated: {sats:,} satoshi  →  {fmt_eth(eth_equiv)} (BTC/ETH=30)")
+    print(f"  SUCCESS - BalanceUpdated: {sats:,} satoshi  ->  {fmt_eth(eth_equiv)} (BTC/ETH=30)")
     if eth_equiv < LOAN1_AMOUNT:
-        sys.exit(
-            f"ERROR: oracle returned ETH equivalent {fmt_eth(eth_equiv)} < loan1 "
-            f"{fmt_eth(LOAN1_AMOUNT)}. Choose a BTC address with more balance via BTC_ADDR env."
-        )
+        sys.exit(f"ERROR: oracle returned ETH equivalent {fmt_eth(eth_equiv)} < loan1 "f"{fmt_eth(LOAN1_AMOUNT)}. Choose a BTC address with more balance.")
 
     # ── Step 5: submit proposal ───────────────────────────────────────────────
     banner("Step 5/16 — submit proposal 1")
