@@ -184,7 +184,7 @@ def print_loan_state(loan, label="", pool=None, addr2label=None):
     print(f"    expiryBlock          : {loan.functions.expiryBlock().call()}")
     print(f"    remainingLoanAmount  : {fmt_eth(loan.functions.remainingLoanAmount().call())}")
     print(f"    status               : {loan.functions.status().call()} " "(0=Active, 1=Failed, 2=Successful)")
-    print(f"    contributorCount     : {n}  (#i = posizione ordinata per initialLocked DECRESCENTE, NON l'indice contrib[N])")
+    print(f"    contributorCount     : {n}")
     for i in range(n):
         addr, locked = loan.functions.contributors(i).call()
         ac = loan.functions.alreadyCompensated(addr).call()
