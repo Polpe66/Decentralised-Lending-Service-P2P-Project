@@ -356,8 +356,7 @@ def main():
     remaining = loan.functions.remainingLoanAmount().call()
     interest = loan.functions.remainingInterest().call()  # interesse ancora dovuto sul prestito INTERO, letto dal contratto (non ricalcolato sul residuo: l'interesse atteso è loanedAmount*rate/100, non remaining*rate/100)
     close_value = remaining + interest # capitale residuo + interesse residuo: serve per azzerare sia remainingLoanAmount che remainingInterest e far scattare la chiusura Successful
-    print(f"  remaining={fmt_eth(remaining)}  interest={fmt_eth(interest)} "
-          f"  total send={fmt_eth(close_value)}")
+    print(f"  remaining={fmt_eth(remaining)}  interest={fmt_eth(interest)} "f"  total send={fmt_eth(close_value)}")
     pct_before = pool.functions.collateralPercentage().call()
     rcpt = send_tx(w3, a0, loan.functions.partialRepay(), value=close_value, gas=900_000)
     print_events(rcpt, loan, ["Repayment", "LoanClosed"])
