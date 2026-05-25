@@ -1,38 +1,38 @@
 {
   "deployer": {
-    "address": "0xf28dB717CfeF928B9fA96a15f58789ca36d46eD7",
-    "key": "f6cbe1d663dee12960b1b61a594cb8209a00605366d29f188cb900a9d619a34a"
+    "address": "0x8A20Dbb1Bd3cFA986c0a92586434F93D0Dc06122",
+    "key": "c94449ebc18d2cfdced3a60bd4adb82d2cffbf4e4701dfb6d0c2be794d19c8d5"
   },
   "oracle_operator": {
-    "address": "0x3b0d98ab2F7Ba7ef26ba7AF77306b5d5b71C5cDF",
-    "key": "c20239e28e8fd510fa133deaa0bb6317f64b1247131e44ea962d9ec8e5c59112"
+    "address": "0x20AC4Fb7Bbc56FEFC7e212714c9cC1bdB020677a",
+    "key": "3cbf4833d8f7745d6790b9b1dd209bac515e4dd95281bf7a78c71c0890fe0e98"
   },
   "auto_voter": {
-    "address": "0xA3a06768F8AC9054169B69303aD76f925045Ec89",
-    "key": "77f17c01ce532380e778b57b84431f6964211e7f4705e1d5ea7c92465d029fd5"
+    "address": "0x14111dbCE5CD37A5DA0B18Ff4F99DF59FB5aDa71",
+    "key": "cc70397fff16b9971a58efe2fe309cd35300c2d762503d11e74365310bc57b29"
   },
   "contributors": [
     {
-      "address": "0x392c95F7e7475dB5B75f2a6B53b47743aA1eFA5d",
-      "key": "0ca1cb35522440f3b2b9ab5605de1a7bde79752a6b9e6b6e0b1496bbc158fed0"
+      "address": "0xCC88D6bb3FF571Ba308d5A5CB05412C811038059",
+      "key": "14019f3306057209117deeb575a36d3c922d25586eebaf1604f71d90f9a4995b"
     },
     {
-      "address": "0x95De966286d6526D95E0cD8ae1B375f7A50244f2",
-      "key": "fc4b47696434c6dde8904d2586fcdf2651a8b94eb729126ca9e7c0f6d1dfdb64"
+      "address": "0xeDca728Bc31Bbcd9f680181848c4853d52a6ecAf",
+      "key": "2ad2e8b0e22ff5b2415be9a1625ce85980f4649e5e4fd2dcbc77a25a6bb96436"
     },
     {
-      "address": "0x9A713F23D033629Caf6a5fe17Fc93C447184bf4b",
-      "key": "2ed9b9ca5eda220b5999fb5e3da2e3359a83385947c6e9122aba711b8d13d317"
+      "address": "0xC18E12C64cC9c0fE0948ED613B47716cc91f9d15",
+      "key": "1d6229d84251bba1f15834cf05c3a1607939188ae85a41a19f780c2939a2d1b6"
     }
   ],
   "applicants": [
     {
-      "address": "0x8871F62D99342450615502cb493Fbe593808F452",
-      "key": "bb101cb6738bb32c0830e3634e2a5e9af6585ebf1f013004cad9cfc3c82e2be9"
+      "address": "0x28C7261DF23496125c182F06Ed2B12310169735f",
+      "key": "0ded37fda3d42f5c0d53d52fb82dda2e47b2568893abb721d39be5930c0b73c8"
     },
     {
-      "address": "0x541a4F325736B2fC983E20e82018121BD770B412",
-      "key": "7132eed48d674ac65b8c7c7d3cfa5ca5a490253c3c4ade868ed541eddf8ee9df"
+      "address": "0x5543514a2a45CE331aE34489bb8B977e6c9b3B47",
+      "key": "87244f37d7a09c75856171843a12b4b8f07eb09f693005df013235bb2d8c8794"
     }
   ]
 }
