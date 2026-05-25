@@ -18,6 +18,13 @@ venv/
 data/geth/
 data/history
 
+## Stato runtime rigenerato da InitialSetup.py / run demo (NON committare)
+data/accounts.json
+data/lending_pool_info.json
+data/oracle_contract_info.json
+data/demo_log.txt
+data/auto_voter.log
+
 ## Bitcoin blockchain data (troppo grande per git, ~896MB)
 chaindata/
 
