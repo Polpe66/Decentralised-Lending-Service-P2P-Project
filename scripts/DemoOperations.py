@@ -444,27 +444,26 @@ def main():
     print_loan_state(loan2, "loan2 failed", pool, addr2label) # mostra lo stato del loan2 dopo la richiesta di compensazione, che dovrebbe essere marcato come Failed (status=1) e mostrare quanto è già stato compensato al contributor che ha fatto la richiesta
     print_pool_state(pool, "post-comp-claim")
 
-    # ── Step 14: late partialRepay ────────────────────────────────────────────
-    banner("Step 14/16 — late partialRepay on Failed loan")
-    print(f"  → applicant[1] partialRepay value={fmt_eth(LATE_REPAY)}")
-    rcpt = send_tx(w3, a1, loan2.functions.partialRepay(), value=LATE_REPAY, gas=900_000)
+    # Step 14: tentativo di pagamento parziale in ritardo sul prestito fallito
+    banner("Step 14/16 - late partialRepay on Failed loan")
+    print(f"  -> applicant[1] partialRepay value={fmt_eth(LATE_REPAY)}")
+    rcpt = send_tx(w3, a1, loan2.functions.partialRepay(), value=LATE_REPAY, gas=900_000) # applicant[1] tenta di effettuare un pagamento parziale sul prestito fallito
     print_events(rcpt, loan2, ["Repayment"])
-    print(f"  status (loan2)       : {loan2.functions.status().call()} "
-          "(stays 1=Failed — Failed loan never becomes Successful, per spec)")
+    print(f"  status (loan2)       : {loan2.functions.status().call()} ""(stays 1=Failed - Failed loan never becomes Successful, per spec)")
     print_loan_state(loan2, "loan2 after late repay", pool, addr2label)
-    section("contributors after late repay (waterfall: largest c saturated first)")
-    print_contributor_state(w3, pool, contrib_labels)
+    section("contributors after late repay (largest c saturated first)")
+    print_contributor_state(w3, pool, contrib_labels) # mostra lo stato dei contributor dopo il tentativo di pagamento in ritardo sul prestito fallito
     print_pool_state(pool, "post-late-repay")
 
-    # ── Step 15: second compensation claim (multi-claim, refilled pool) ──────
+    # Step 15: seconda richiesta di compensazione da parte dello stesso contributor, test pool refillato
     banner("Step 15/16 — second compensation claim (refilled pool, multi-claim)")
     pct_before = pool.functions.collateralPercentage().call()
     comp_pool_before = pool.functions.compensationPool().call()
     already_before = loan2.functions.alreadyCompensated(claimer.address).call()
-    print(f"  → {claimer.address} requestCompensation()  (second call)")
-    print(f"  pre  alreadyCompensated: {fmt_eth(already_before)}")
-    print(f"  pre  compensationPool:   {fmt_eth(comp_pool_before)}")
-    print(f"  pre  collateralPct:      {pct_before}")
+    print(f"  -> {claimer.address} requestCompensation()  (second call)")
+    print(f"  pre-alreadyCompensated: {fmt_eth(already_before)}")
+    print(f"  pre-compensationPool:   {fmt_eth(comp_pool_before)}")
+    print(f"  pre-collateralPct:      {pct_before}")
     rcpt = send_tx(w3, claimer, loan2.functions.requestCompensation(), gas=600_000)
     print_events(rcpt, loan2, ["CompensationRequested"])
     marked = parse_events(rcpt, loan2, "MarkedFailed")
@@ -476,8 +475,7 @@ def main():
     print(f"  MarkedFailed events    : {len(marked)} (expect 0 — loan can be marked failed only once)")
     print(f"  CollateralPctChanged   : {len(pct_changed)} (expect 0 — pct only bumps on first claim)")
     print(f"  collateralPercentage   : {pct_before} → {pct_after} (expect unchanged)")
-    print(f"  paid this call         : {fmt_eth(paid)} "
-          f"(capped by compPool {fmt_eth(comp_pool_before)})")
+    print(f"  paid this call         : {fmt_eth(paid)} "f"(capped by compPool {fmt_eth(comp_pool_before)})")
     print(f"  alreadyCompensated     : {fmt_eth(already_before)} → {fmt_eth(already_after)}")
     print(f"  compensationPool       : {fmt_eth(comp_pool_before)} → {fmt_eth(comp_pool_after)}")
     print_loan_state(loan2, "loan2 after 2nd comp claim", pool, addr2label)
