@@ -280,17 +280,12 @@ def main():
     eth_equiv = oracle.functions.getEthEquivalent(btc_hash).call()
     print(f"  SUCCESS - BalanceUpdated: {sats:,} satoshi  ->  {fmt_eth(eth_equiv)} (BTC/ETH=30)")
     if eth_equiv < LOAN1_AMOUNT:
-        sys.exit(f"ERROR: oracle returned ETH equivalent {fmt_eth(eth_equiv)} < loan1 "f"{fmt_eth(LOAN1_AMOUNT)}. Choose a BTC address with more balance.")
+        sys.exit(f"ERROR: oracle returned ETH equivalent {fmt_eth(eth_equiv)} < loan1 "f"{fmt_eth(LOAN1_AMOUNT)}")
 
-    # ── Step 5: submit proposal ───────────────────────────────────────────────
+    # Step 5: inoltro proposta di prestito
     banner("Step 5/16 — submit proposal 1")
-    print(f"  → applicant[0] submitProposal(amount={fmt_eth(LOAN1_AMOUNT)}, rate={LOAN1_RATE}%, "
-          f"duration={LOAN1_DURATION}, btcHash)")
-    rcpt = send_tx(
-        w3, a0,
-        pool.functions.submitProposal(LOAN1_AMOUNT, LOAN1_RATE, LOAN1_DURATION, btc_hash),
-        gas=400_000,
-    )
+    print(f"  -> applicant[0] submitProposal(amount={fmt_eth(LOAN1_AMOUNT)}, rate={LOAN1_RATE}%, "f"duration={LOAN1_DURATION}, btcHash)")
+    rcpt = send_tx(w3, a0, pool.functions.submitProposal(LOAN1_AMOUNT, LOAN1_RATE, LOAN1_DURATION, btc_hash), gas=400_000,)
     print_events(rcpt, pool, ["ProposalSubmitted"])
     submitted = parse_events(rcpt, pool, "ProposalSubmitted")
     pid1 = submitted[0]["args"]["proposalId"]
