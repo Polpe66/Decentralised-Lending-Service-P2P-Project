@@ -1,38 +1,38 @@
 {
   "deployer": {
-    "address": "0x8A20Dbb1Bd3cFA986c0a92586434F93D0Dc06122",
-    "key": "c94449ebc18d2cfdced3a60bd4adb82d2cffbf4e4701dfb6d0c2be794d19c8d5"
+    "address": "0x4C76B1b0037C984719e4FF25020AC56d8a10631F",
+    "key": "ac869648390c6ca8c7e31add5a104cbaaf53e924582f75d8a1721057e1381489"
   },
   "oracle_operator": {
-    "address": "0x20AC4Fb7Bbc56FEFC7e212714c9cC1bdB020677a",
-    "key": "3cbf4833d8f7745d6790b9b1dd209bac515e4dd95281bf7a78c71c0890fe0e98"
+    "address": "0xa54424798Fe6A520124f1f71f7f87DE7620157b5",
+    "key": "cdffd75fa61d59520ebf358420033a6833411b667657528b049d27d811101711"
   },
   "auto_voter": {
-    "address": "0x14111dbCE5CD37A5DA0B18Ff4F99DF59FB5aDa71",
-    "key": "cc70397fff16b9971a58efe2fe309cd35300c2d762503d11e74365310bc57b29"
+    "address": "0x1CeA9235448E236e99BE0C3968C53DeB1C7524Da",
+    "key": "d9471c7a945a4ae03a32a352b5c4b1811ae428d0035fb8b919063e7e2dacac22"
   },
   "contributors": [
     {
-      "address": "0xCC88D6bb3FF571Ba308d5A5CB05412C811038059",
-      "key": "14019f3306057209117deeb575a36d3c922d25586eebaf1604f71d90f9a4995b"
+      "address": "0x597594CFB1Ba4061f182D259298Ced378A757795",
+      "key": "461e19642768048c7713cb8a58900adc0fd4df2ae7c40781c286e759d4b8f71f"
     },
     {
-      "address": "0xeDca728Bc31Bbcd9f680181848c4853d52a6ecAf",
-      "key": "2ad2e8b0e22ff5b2415be9a1625ce85980f4649e5e4fd2dcbc77a25a6bb96436"
+      "address": "0x9E4E2B9866D4d953AefA135d231b4f8608A8302e",
+      "key": "0f52960ae8ecbe605fcbf3c20cc01e0821330c71ee98f9e60b07d0c38d4fa518"
     },
     {
-      "address": "0xC18E12C64cC9c0fE0948ED613B47716cc91f9d15",
-      "key": "1d6229d84251bba1f15834cf05c3a1607939188ae85a41a19f780c2939a2d1b6"
+      "address": "0x271C0F3331a86604681a6Fadb1acc50aaDE5Cd55",
+      "key": "c8d3ef8589ec8bdccd216d3bfd996b8d65c28af4322b11f68c3f37d4c8840bb7"
     }
   ],
   "applicants": [
     {
-      "address": "0x28C7261DF23496125c182F06Ed2B12310169735f",
-      "key": "0ded37fda3d42f5c0d53d52fb82dda2e47b2568893abb721d39be5930c0b73c8"
+      "address": "0x840CB86b9aCB31ca18359b212A7CFF587Bcb3ca0",
+      "key": "f17f1ba25bd20fc2daadf321d15bd58f4494da95fee08bed3b42e35b6130fc1e"
     },
     {
-      "address": "0x5543514a2a45CE331aE34489bb8B977e6c9b3B47",
-      "key": "87244f37d7a09c75856171843a12b4b8f07eb09f693005df013235bb2d8c8794"
+      "address": "0xc2429436B88a796F049cFF281f302d8b5A3045Cb",
+      "key": "c04c7a74731aa96831f291f08d702fdb852463674a916c829b8e40cc04456175"
     }
   ]
 }

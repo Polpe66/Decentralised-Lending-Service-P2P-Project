@@ -358,9 +358,31 @@ def main():
     close_value = remaining + interest # capitale residuo + interesse residuo: serve per azzerare sia remainingLoanAmount che remainingInterest e far scattare la chiusura Successful
     print(f"  remaining={fmt_eth(remaining)}  interest={fmt_eth(interest)} "f"  total send={fmt_eth(close_value)}")
     pct_before = pool.functions.collateralPercentage().call()
-    rcpt = send_tx(w3, a0, loan.functions.partialRepay(), value=close_value, gas=900_000) 
-    print_events(rcpt, loan, ["Repayment", "LoanClosed"]) 
+
+    # snapshot dell'interesse lordo già accreditato a ciascun contributor, per isolare quanto viene pagato in QUESTO step
+    n_contrib = loan.functions.contributorCount().call()
+    loan_coll_pct = loan.functions.collateralPercentage().call()  # collateralPercentage del loan (immutable), usato per lo split interesse gain/collaterale come nel contratto
+    gross_before = {}
+    for i in range(n_contrib):
+        c_addr, _ = loan.functions.contributors(i).call()
+        gross_before[c_addr] = loan.functions.interestPaidGrossOf(c_addr).call()
+
+    rcpt = send_tx(w3, a0, loan.functions.partialRepay(), value=close_value, gas=900_000)
+    print_events(rcpt, loan, ["Repayment", "LoanClosed"])
     print_events(rcpt, pool, ["LoanDeregistered", "CollateralPercentageChanged"])
+
+    # interesse pagato dall'applicant a ciascun contributor in questo step: delta lordo, scomposto in
+    # netto effettivamente ricevuto dal contributor (gain) e quota collaterale che va alla compensation pool
+    addr2label = {acc.address: lbl for lbl, acc in contrib_labels}
+    section("interest paid to each contributor (this step)")
+    for i in range(n_contrib):
+        c_addr, _ = loan.functions.contributors(i).call()
+        gross = loan.functions.interestPaidGrossOf(c_addr).call() - gross_before[c_addr]
+        coll = (gross * loan_coll_pct) // 100  # quota collaterale -> compensation pool (stesso calcolo del contratto)
+        gain = gross - coll                    # interesse netto trasferito al wallet del contributor
+        label = addr2label.get(c_addr, "?")
+        print(f"    {label:<14} {c_addr}"
+              f"\n      grossInterest={fmt_eth(gross)}  netToContributor={fmt_eth(gain)}  toCompPool(collateral)={fmt_eth(coll)}")
     status = loan.functions.status().call()
     pct_after = pool.functions.collateralPercentage().call()
     is_active = pool.functions.isActiveLoan(loan.address).call()
