@@ -430,21 +430,18 @@ def main():
     claimer = contributors[2]
     pct_before = pool.functions.collateralPercentage().call()
     comp_pool_before = pool.functions.compensationPool().call()
-    print(f"  → {claimer.address} requestCompensation()")
-    print(f"  pre  alreadyCompensated: "
-          f"{fmt_eth(loan2.functions.alreadyCompensated(claimer.address).call())}")
-    print(f"  pre  compensationPool:   {fmt_eth(comp_pool_before)}")
+    print(f"  -> {claimer.address} requestCompensation()")
+    print(f"  pre-alreadyCompensated: "f"{fmt_eth(loan2.functions.alreadyCompensated(claimer.address).call())}") # mostra quanto il contributor ha già ricevuto in compensazione per questo loan 0
+    print(f"  pre-compensationPool:   {fmt_eth(comp_pool_before)}") # mostra il valore attuale del compensation pool prima della richiesta di compensazione, che determina il massimo che il contributor può ricevere in questo step
     rcpt = send_tx(w3, claimer, loan2.functions.requestCompensation(), gas=600_000)
-    print_events(rcpt, loan2, ["MarkedFailed", "CompensationRequested"])
+    print_events(rcpt, loan2, ["MarkedFailed", "CompensationRequested"]) #prestito marcato come fallito e richiesta di compensazione emessa
     print_events(rcpt, pool, ["CollateralPercentageChanged"])
     pct_after = pool.functions.collateralPercentage().call()
-    print(f"  status (loan2)         : {loan2.functions.status().call()} (expect 1=Failed)")
-    print(f"  collateralPercentage   : {pct_before} → {pct_after} (expect +5 on first claim)")
-    print(f"  alreadyCompensated     : "
-          f"{fmt_eth(loan2.functions.alreadyCompensated(claimer.address).call())}")
-    print(f"  compRecovered          : "
-          f"{fmt_eth(loan2.functions.compRecovered(claimer.address).call())}")
-    print_loan_state(loan2, "loan2 failed", pool, addr2label)
+    print(f"  status (loan2)         : {loan2.functions.status().call()}")
+    print(f"  collateralPercentage   : {pct_before} -> {pct_after}")
+    print(f"  alreadyCompensated     : "f"{fmt_eth(loan2.functions.alreadyCompensated(claimer.address).call())}")
+    print(f"  compRecovered          : "f"{fmt_eth(loan2.functions.compRecovered(claimer.address).call())}")
+    print_loan_state(loan2, "loan2 failed", pool, addr2label) # mostra lo stato del loan2 dopo la richiesta di compensazione, che dovrebbe essere marcato come Failed (status=1) e mostrare quanto è già stato compensato al contributor che ha fatto la richiesta
     print_pool_state(pool, "post-comp-claim")
 
     # ── Step 14: late partialRepay ────────────────────────────────────────────
