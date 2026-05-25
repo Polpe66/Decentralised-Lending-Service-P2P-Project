@@ -173,6 +173,7 @@ def lookup_loan_address(rcpt, pool):
     for ev in parse_events(rcpt, pool, "ProposalApproved"):
         return ev["args"]["loanContract"], ev["args"]["loanedAmount"]
     return None, None
+
 # funzione per stampare lo stato di un loan contract, mostrando i dettagli del prestito e lo stato di ogni contributore associato al prestito (locked, unlocked, compensato, ecc). Questi valori vengono letti dal contratto del loan usando le funzioni corrispondenti
 def print_loan_state(loan, label=""):
     n = loan.functions.contributorCount().call()
@@ -310,41 +311,39 @@ def main():
         rcpt = send_tx(w3, voter, pool.functions.vote(pid1, approve), gas=200_000) # invia la transazione di voto al pool, specificando il proposalId e il voto (approve/reject)
         print_events(rcpt, pool, ["ProposalVoted"])
 
-    # ── Step 7: mine voting period ────────────────────────────────────────────
-    banner("Step 7/16 — mine PROPOSAL_VOTING_PERIOD + 1 blocks")
-    vp = pool.functions.PROPOSAL_VOTING_PERIOD().call()
+    # Step 7: far avanzare la blockchain per superare il periodo di voto
+    banner("Step 7/16 - mine PROPOSAL_VOTING_PERIOD + 1 blocks")
+    vp = pool.functions.PROPOSAL_VOTING_PERIOD().call() # legge il periodo di voto per le proposte dal contratto del pool, in modo da sapere quanti blocchi devono essere minati per superare il periodo di voto e poter risolvere la proposta
     print(f"  PROPOSAL_VOTING_PERIOD = {vp}; mining {vp + 1} blocks")
     print(f"  block before: {w3.eth.block_number}")
-    mine_blocks(w3, vp + 1)
+    mine_blocks(w3, vp + 1) # fa avanzare la blockchain di un numero di blocchi pari al periodo di voto più uno, in modo da superare il periodo di voto e poter risolvere la proposta nel passaggio successivo
     print(f"  block after:  {w3.eth.block_number}")
 
-    # ── Step 8: resolve proposal ──────────────────────────────────────────────
-    banner("Step 8/16 — resolve proposal 1")
-    print(f"  → applicant[0] resolveProposal({pid1})")
-    rcpt = send_tx(w3, a0, pool.functions.resolveProposal(pid1), gas=3_000_000)
+    # Step 8: risoluzione della proposta e deploy del loan contract
+    banner("Step 8/16 - resolve proposal 1")
+    print(f"  -> applicant[0] resolveProposal({pid1})")
+    rcpt = send_tx(w3, a0, pool.functions.resolveProposal(pid1), gas=3_000_000) # applicant[0] chiama la funzione resolveProposal. Se la proposta è approvata ci sarà il deploy di un nuovo LoanContract e l'emissione dell'evento ProposalApproved; se è respinta, emetterà l'evento ProposalRejected
     print_events(rcpt, pool, ["ProposalApproved", "ProposalRejected", "LoanRegistered"])
-    loan_addr, loaned_amount = lookup_loan_address(rcpt, pool)
+    loan_addr, loaned_amount = lookup_loan_address(rcpt, pool) # se la proposta è stata respinta loan_addr sarà None
     if loan_addr is None:
-        sys.exit("ERROR: proposal 1 was rejected — demo cannot continue")
+        sys.exit("ERROR: proposal 1 was rejected - demo cannot continue")
     print(f"  LoanContract        : {loan_addr}")
-    print(f"  loanedAmount (event): {fmt_eth(loaned_amount)} "
-          f"(may be < proposal.amount due to floor rounding)")
-    loan = w3.eth.contract(address=loan_addr, abi=loan_abi)
+    print(f"  loanedAmount (event): {fmt_eth(loaned_amount)} "f"(may be < proposal.amount due to floor rounding)")
+    loan = w3.eth.contract(address=loan_addr, abi=loan_abi) # crea un'istanza del contratto del loan appena creato usando l'indirizzo ottenuto dall'evento ProposalApproved e l'ABI del loan contract
 
-    # ── Step 9: inspect new LoanContract ──────────────────────────────────────
-    banner("Step 9/16 — inspect new LoanContract")
-    print_loan_state(loan, "loan1")
-    section("contributors after lock")
-    print_contributor_state(w3, pool, contrib_labels)
+    # Step 9: ispezione del nuovo LoanContract
+    banner("Step 9/16 - inspect new LoanContract")
+    print_loan_state(loan, "loan1") # stato loan contract (status = 0=Active, 1=Failed, 2=Successful)
+    section("contributors after lock") 
+    print_contributor_state(w3, pool, contrib_labels) # mostra lo stato dei contributor dopo il lock dei fondi per il prestito appena creato
     section("applicants (loan disbursed to a0)")
-    print_applicant_state(w3, applic_labels)
-    print_pool_state(pool, "post-resolve")
+    print_applicant_state(w3, applic_labels) # mostra lo stato degli applicant dopo il disbursal del prestito al primo applicant (a0), che dovrebbe riflettersi in un aumento del balance di a0
+    print_pool_state(pool, "post-resolve") # mostra lo stato del pool dopo la risoluzione della proposta, che dovrebbe riflettere il lock dei fondi per il prestito appena creato
 
-    # ── Step 10: partialRepay (mid) ───────────────────────────────────────────
-    banner("Step 10/16 — partialRepay (mid)")
+    # Step 10: primo pagamento parziale da parte di applicant[0] PartialRepay
+    banner("Step 10/16 - partialRepay (mid)")
     remaining_before = loan.functions.remainingLoanAmount().call()
-    print(f"  → applicant[0] partialRepay value={fmt_eth(REPAY1_MID)} "
-          f"(remaining before={fmt_eth(remaining_before)})")
+    print(f"  -> applicant[0] partialRepay value={fmt_eth(REPAY1_MID)} "f"(remaining before={fmt_eth(remaining_before)})")
     rcpt = send_tx(w3, a0, loan.functions.partialRepay(), value=REPAY1_MID, gas=600_000)
     print_events(rcpt, loan, ["Repayment"])
     print_loan_state(loan, "loan1 mid")
