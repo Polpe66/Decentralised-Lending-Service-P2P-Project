@@ -46,7 +46,6 @@ LOAN2_DURATION = 15 # durata del secondo prestito in blocchi
 LATE_REPAY = Web3.to_wei("0.25", "ether") # pagamento parziale tardivo da parte di applicant[1]
 
 # parte di scrittura su più stream (console + file log) per tenere traccia di tutte le operazioni ed eventi durante la demo, utile per debug e verifica dei risultati
-
 class Tee:
     def __init__(self, *streams):
         self.streams = streams
@@ -282,14 +281,14 @@ def main():
     if eth_equiv < LOAN1_AMOUNT:
         sys.exit(f"ERROR: oracle returned ETH equivalent {fmt_eth(eth_equiv)} < loan1 "f"{fmt_eth(LOAN1_AMOUNT)}")
 
-    # Step 5: inoltro proposta di prestito
-    banner("Step 5/16 — submit proposal 1")
+    # Step 5: inoltro prima proposta di prestito
+    banner("Step 5/16 - submit proposal 1")
     print(f"  -> applicant[0] submitProposal(amount={fmt_eth(LOAN1_AMOUNT)}, rate={LOAN1_RATE}%, "f"duration={LOAN1_DURATION}, btcHash)")
-    rcpt = send_tx(w3, a0, pool.functions.submitProposal(LOAN1_AMOUNT, LOAN1_RATE, LOAN1_DURATION, btc_hash), gas=400_000,)
+    rcpt = send_tx(w3, a0, pool.functions.submitProposal(LOAN1_AMOUNT, LOAN1_RATE, LOAN1_DURATION, btc_hash), gas=400_000,) # applicant[0] invia una proposta di prestito al pool
     print_events(rcpt, pool, ["ProposalSubmitted"])
-    submitted = parse_events(rcpt, pool, "ProposalSubmitted")
-    pid1 = submitted[0]["args"]["proposalId"]
-    p = pool.functions.getProposal(pid1).call()
+    submitted = parse_events(rcpt, pool, "ProposalSubmitted") # estrae l'evento ProposalSubmitted dalla receipt per ottenere i dettagli della proposta appena inviata
+    pid1 = submitted[0]["args"]["proposalId"] # estrae l'ID della proposta (proposalId) dall'evento, che sarà usato nei passaggi successivi per votare e risolvere la proposta
+    p = pool.functions.getProposal(pid1).call() # chiama la funzione getProposal del pool per ottenere i dettagli completi della proposta appena inviata, dato il proposalId
     print(f"  proposalId           : {pid1}")
     print(f"  applicant            : {p[0]}")
     print(f"  amount               : {fmt_eth(p[1])}")
@@ -298,18 +297,17 @@ def main():
     print(f"  submittedBlock       : {p[5]}")
     print(f"  status               : {p[7]} (0=Active)")
 
-    # ── Step 6: voting ────────────────────────────────────────────────────────
-    banner("Step 6/16 — voting (proposal 1)")
-    # Mix approve/reject. With weights 0.7 / 2 / 3, c0's reject (smallest weight)
-    # does not block approval (yes weight = 5 > no weight = 0.7).
+    # Step 6: votazione
+    banner("Step 6/16 - voting (proposal 1)")
     votes = [(contributors[0], False),
              (contributors[1], True),
              (contributors[2], True)]
+    # ogni contributor vota sulla proposta, mostrando il peso del voto (disposableValue) e il risultato del voto (approve/reject)
     for voter, approve in votes:
-        disp = pool.functions.disposableValue(voter.address).call()
+        disp = pool.functions.disposableValue(voter.address).call() # legge il valore disponibile per il voto del contributor, che determina il peso del suo voto
         verdict = "APPROVE" if approve else "REJECT"
-        print(f"\n  → {voter.address} votes {verdict} (weight={fmt_eth(disp)})")
-        rcpt = send_tx(w3, voter, pool.functions.vote(pid1, approve), gas=200_000)
+        print(f"\n  -> {voter.address} votes {verdict} (weight={fmt_eth(disp)})")
+        rcpt = send_tx(w3, voter, pool.functions.vote(pid1, approve), gas=200_000) # invia la transazione di voto al pool, specificando il proposalId e il voto (approve/reject)
         print_events(rcpt, pool, ["ProposalVoted"])
 
     # ── Step 7: mine voting period ────────────────────────────────────────────
