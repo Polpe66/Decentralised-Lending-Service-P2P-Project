@@ -175,7 +175,7 @@ def lookup_loan_address(rcpt, pool):
     return None, None
 
 # funzione per stampare lo stato di un loan contract, mostrando i dettagli del prestito e lo stato di ogni contributore associato al prestito (locked, unlocked, compensato, ecc). Questi valori vengono letti dal contratto del loan usando le funzioni corrispondenti
-def print_loan_state(loan, label=""):
+def print_loan_state(loan, label="", pool=None, addr2label=None):
     n = loan.functions.contributorCount().call()
     print(f"  [{label} loan state @ {loan.address}]")
     print(f"    applicant            : {loan.functions.applicant().call()}")
@@ -184,13 +184,16 @@ def print_loan_state(loan, label=""):
     print(f"    expiryBlock          : {loan.functions.expiryBlock().call()}")
     print(f"    remainingLoanAmount  : {fmt_eth(loan.functions.remainingLoanAmount().call())}")
     print(f"    status               : {loan.functions.status().call()} " "(0=Active, 1=Failed, 2=Successful)")
-    print(f"    contributorCount     : {n}")
+    print(f"    contributorCount     : {n}  (#i = posizione ordinata per initialLocked DECRESCENTE, NON l'indice contrib[N])")
     for i in range(n):
         addr, locked = loan.functions.contributors(i).call()
         ac = loan.functions.alreadyCompensated(addr).call()
         cr = loan.functions.compRecovered(addr).call()
         us = loan.functions.unlockedSoFar(addr).call()
-        print(f"      #{i} {addr}  initialLocked={fmt_eth(locked)}"f"  unlockedSoFar={fmt_eth(us)}  alreadyCompensated={fmt_eth(ac)}"f"  compRecovered={fmt_eth(cr)}")
+        lbl = (addr2label or {}).get(addr, "?")  # etichetta contrib[N] (ordine accounts.json) per disambiguare dall'indice #i ordinato per lock
+        disp = f"  disposable={fmt_eth(pool.functions.disposableValue(addr).call())}" if pool is not None else ""  # disponibile globale del contributor nel pool
+        print(f"      #{i} {lbl:<10} {addr}  initialLocked={fmt_eth(locked)}{disp}"
+              f"\n          unlockedSoFar={fmt_eth(us)}  alreadyCompensated={fmt_eth(ac)}  compRecovered={fmt_eth(cr)}")
 
 # main della demo, 16 steps
 def main():
@@ -234,6 +237,7 @@ def main():
     print(f"  -> btcAddressHash = 0x{btc_hash.hex()}")
 
     contrib_labels = [(f"contrib[{i}]", c) for i, c in enumerate(contributors)] # crea una lista di tuple (label, account) per i contributor, con label come "contrib[0]", "contrib[1]", ecc. Questo viene usato per stampare lo stato dei contributor in modo leggibile durante la demo
+    addr2label = {acc.address: lbl for lbl, acc in contrib_labels} # mappa indirizzo -> etichetta contrib[N], riusata in print_loan_state e nel breakdown interessi
     applic_labels = [(f"applicant[{i}]", a) for i, a in enumerate(applicants)] # crea una lista di tuple (label, account) per gli applicant, con label come "applicant[0]", "applicant[1]". Questo viene usato per stampare lo stato degli applicant in modo leggibile durante la demo
 
     # Step 1: stampa stato inziale
@@ -333,7 +337,7 @@ def main():
 
     # Step 9: ispezione del nuovo LoanContract
     banner("Step 9/16 - inspect new LoanContract")
-    print_loan_state(loan, "loan1") # stato loan contract (status = 0=Active, 1=Failed, 2=Successful)
+    print_loan_state(loan, "loan1", pool, addr2label) # stato loan contract (status = 0=Active, 1=Failed, 2=Successful)
     section("contributors after lock") 
     print_contributor_state(w3, pool, contrib_labels) # mostra lo stato dei contributor dopo il lock dei fondi per il prestito appena creato
     section("applicants (loan disbursed to a0)")
@@ -346,7 +350,7 @@ def main():
     print(f"  -> applicant[0] partialRepay value={fmt_eth(REPAY1_MID)} "f"(remaining before={fmt_eth(remaining_before)})")
     rcpt = send_tx(w3, a0, loan.functions.partialRepay(), value=REPAY1_MID, gas=600_000) # applicant[0] effettua un pagamento parziale chiamando la funzione partialRepay del loan contract, specificando un valore in ether (REPAY1_MID)
     print_events(rcpt, loan, ["Repayment"]) # mostra evento Repayment emesso dal loan contract in risposta al pagamento parziale
-    print_loan_state(loan, "loan1 mid")
+    print_loan_state(loan, "loan1 mid", pool, addr2label)
     section("contributors after mid repay")
     print_contributor_state(w3, pool, contrib_labels)
     print_pool_state(pool, "post-mid-repay")
@@ -373,7 +377,6 @@ def main():
 
     # interesse pagato dall'applicant a ciascun contributor in questo step: delta lordo, scomposto in
     # netto effettivamente ricevuto dal contributor (gain) e quota collaterale che va alla compensation pool
-    addr2label = {acc.address: lbl for lbl, acc in contrib_labels}
     section("interest paid to each contributor (this step)")
     for i in range(n_contrib):
         c_addr, _ = loan.functions.contributors(i).call()
@@ -389,7 +392,7 @@ def main():
     print(f"  status               : {status}")
     print(f"  collateralPercentage : {pct_before} -> {pct_after}")
     print(f"  isActiveLoan         : {is_active}")
-    print_loan_state(loan, "loan1 closed")
+    print_loan_state(loan, "loan1 closed", pool, addr2label)
     section("contributors after close (lockedValue restored)")
     print_contributor_state(w3, pool, contrib_labels)
     print_pool_state(pool, "post-close")
@@ -415,7 +418,7 @@ def main():
         sys.exit("ERROR: proposal 2 was rejected - demo cannot continue")
     loan2 = w3.eth.contract(address=loan2_addr, abi=loan_abi)
     print(f"  LoanContract (loan2): {loan2_addr}  loanedAmount={fmt_eth(loan2_amount)}")
-    print_loan_state(loan2, "loan2 active")
+    print_loan_state(loan2, "loan2 active", pool, addr2label)
 
     print(f"\n  applicant[1] does NOT repay. Mining {LOAN2_DURATION + 1} blocks to go past expiry…")
     mine_blocks(w3, LOAN2_DURATION + 1)
@@ -441,7 +444,7 @@ def main():
           f"{fmt_eth(loan2.functions.alreadyCompensated(claimer.address).call())}")
     print(f"  compRecovered          : "
           f"{fmt_eth(loan2.functions.compRecovered(claimer.address).call())}")
-    print_loan_state(loan2, "loan2 failed")
+    print_loan_state(loan2, "loan2 failed", pool, addr2label)
     print_pool_state(pool, "post-comp-claim")
 
     # ── Step 14: late partialRepay ────────────────────────────────────────────
@@ -451,7 +454,7 @@ def main():
     print_events(rcpt, loan2, ["Repayment"])
     print(f"  status (loan2)       : {loan2.functions.status().call()} "
           "(stays 1=Failed — Failed loan never becomes Successful, per spec)")
-    print_loan_state(loan2, "loan2 after late repay")
+    print_loan_state(loan2, "loan2 after late repay", pool, addr2label)
     section("contributors after late repay (waterfall: largest c saturated first)")
     print_contributor_state(w3, pool, contrib_labels)
     print_pool_state(pool, "post-late-repay")
@@ -480,7 +483,7 @@ def main():
           f"(capped by compPool {fmt_eth(comp_pool_before)})")
     print(f"  alreadyCompensated     : {fmt_eth(already_before)} → {fmt_eth(already_after)}")
     print(f"  compensationPool       : {fmt_eth(comp_pool_before)} → {fmt_eth(comp_pool_after)}")
-    print_loan_state(loan2, "loan2 after 2nd comp claim")
+    print_loan_state(loan2, "loan2 after 2nd comp claim", pool, addr2label)
     section("contributors after 2nd comp claim")
     print_contributor_state(w3, pool, contrib_labels)
     print_pool_state(pool, "post-2nd-comp-claim")

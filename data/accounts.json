@@ -1,38 +1,38 @@
 {
   "deployer": {
-    "address": "0x4C76B1b0037C984719e4FF25020AC56d8a10631F",
-    "key": "ac869648390c6ca8c7e31add5a104cbaaf53e924582f75d8a1721057e1381489"
+    "address": "0xbfBbF6E3672e3540f532287F33e53Eb5a62A464E",
+    "key": "670c37451b86f56fa8ef14a305c27ab3b715b5d1da79d3f073fb4b47468860dc"
   },
   "oracle_operator": {
-    "address": "0xa54424798Fe6A520124f1f71f7f87DE7620157b5",
-    "key": "cdffd75fa61d59520ebf358420033a6833411b667657528b049d27d811101711"
+    "address": "0xfDA9Ff38CB29Cf33e4aEC3773939aDFC62569Ea0",
+    "key": "8e8cc58d0d5a67a64b204cd30c7bb236255113d576cb0433a188a9012c7034de"
   },
   "auto_voter": {
-    "address": "0x1CeA9235448E236e99BE0C3968C53DeB1C7524Da",
-    "key": "d9471c7a945a4ae03a32a352b5c4b1811ae428d0035fb8b919063e7e2dacac22"
+    "address": "0x8e981b50555f3D5B5506Dd479b1155a9b45424D0",
+    "key": "a710779394af255613cf5ab98b2c9f7a1a3a70d5dfbe497d2828c4bde6e28375"
   },
   "contributors": [
     {
-      "address": "0x597594CFB1Ba4061f182D259298Ced378A757795",
-      "key": "461e19642768048c7713cb8a58900adc0fd4df2ae7c40781c286e759d4b8f71f"
+      "address": "0xD1d899A105d9555555FA4De7AF0cc541195a4E1f",
+      "key": "4cf2b02363d935463e295cc5771a54ee8f4aa04d36119ac7cb33ec927de4479d"
     },
     {
-      "address": "0x9E4E2B9866D4d953AefA135d231b4f8608A8302e",
-      "key": "0f52960ae8ecbe605fcbf3c20cc01e0821330c71ee98f9e60b07d0c38d4fa518"
+      "address": "0x6795e7050CFDa48F5AdcA113E71614917C3612AF",
+      "key": "5fea73d8d1f50388b5772491eab3bb354053330c10346d218b67c164234fdca7"
     },
     {
-      "address": "0x271C0F3331a86604681a6Fadb1acc50aaDE5Cd55",
-      "key": "c8d3ef8589ec8bdccd216d3bfd996b8d65c28af4322b11f68c3f37d4c8840bb7"
+      "address": "0x086Da92B43352419773196439a39fCdDDC2F28Ac",
+      "key": "f535fcda9738ddfd5489c1fc11654aa489f3192b3ab7296c5063acc3e6c4223b"
     }
   ],
   "applicants": [
     {
-      "address": "0x840CB86b9aCB31ca18359b212A7CFF587Bcb3ca0",
-      "key": "f17f1ba25bd20fc2daadf321d15bd58f4494da95fee08bed3b42e35b6130fc1e"
+      "address": "0x3E11d857A6A8e45D657Eb33d124A20C8333D16e7",
+      "key": "aa4618e007d83f835490989d5f0cc1a65c0e6019942845378f65b597dc36bdee"
     },
     {
-      "address": "0xc2429436B88a796F049cFF281f302d8b5A3045Cb",
-      "key": "c04c7a74731aa96831f291f08d702fdb852463674a916c829b8e40cc04456175"
+      "address": "0xd347949548f05fAc8A5Ccb97836Ab1C500375877",
+      "key": "6f6cbc15b254d79bee223bb182d7766092b42aa286e1961a8baf71f450af58cc"
     }
   ]
 }
