@@ -4,8 +4,8 @@
 ------------------------------------------------------------------------
 RPC: http://127.0.0.1:8545   chainId: 202526
 Log file: /home/francesco/Desktop/project_p2p/P2PBC2026Project/data/demo_log.txt
-LendingPool proxy: 0x7EbCb1AEA65285C0f41F1A4A020290393a7E625a
-BitcoinOracle:     0xD16c47c4c38D480C6C152dab1833535cc275D8Dc
+LendingPool proxy: 0x6EC0A45841be14A63C041C04A896B7F3EeAB33A7
+BitcoinOracle:     0xDABeea344c37E81A69A9722c9E0b76a616fB8D1F
 BTC address used as liquidity proof: 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa
   -> btcAddressHash = 0x77c6e9d5d93ff9921129ddedcc2d859bd54a7be81343f60c11961da1e54f5be3
 
@@ -20,29 +20,29 @@ BTC address used as liquidity proof: 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa
     collateralPct    : 50
 
 -- contributors --
-    contrib[0]     0x597594CFB1Ba4061f182D259298Ced378A757795
+    contrib[0]     0xD1d899A105d9555555FA4De7AF0cc541195a4E1f
       wallet=5.000000 ETH  deposits=0.000000 ETH  locked=0.000000 ETH  disposable=0.000000 ETH
-    contrib[1]     0x9E4E2B9866D4d953AefA135d231b4f8608A8302e
+    contrib[1]     0x6795e7050CFDa48F5AdcA113E71614917C3612AF
       wallet=5.000000 ETH  deposits=0.000000 ETH  locked=0.000000 ETH  disposable=0.000000 ETH
-    contrib[2]     0x271C0F3331a86604681a6Fadb1acc50aaDE5Cd55
+    contrib[2]     0x086Da92B43352419773196439a39fCdDDC2F28Ac
       wallet=5.000000 ETH  deposits=0.000000 ETH  locked=0.000000 ETH  disposable=0.000000 ETH
 
 -- applicants --
-    applicant[0]   0x840CB86b9aCB31ca18359b212A7CFF587Bcb3ca0  wallet=1.000000 ETH
-    applicant[1]   0xc2429436B88a796F049cFF281f302d8b5A3045Cb  wallet=1.000000 ETH
+    applicant[0]   0x3E11d857A6A8e45D657Eb33d124A20C8333D16e7  wallet=1.000000 ETH
+    applicant[1]   0xd347949548f05fAc8A5Ccb97836Ab1C500375877  wallet=1.000000 ETH
 
 ------------------------------------------------------------------------
   Step 2/16 - deposits
 ------------------------------------------------------------------------
 
-  → 0x597594CFB1Ba4061f182D259298Ced378A757795 deposit 1.000000 ETH
-    event Deposited: {'contributor': '0x597594CFB1Ba4061f182D259298Ced378A757795', 'amount': '1.000000 ETH'}
+  → 0xD1d899A105d9555555FA4De7AF0cc541195a4E1f deposit 1.000000 ETH
+    event Deposited: {'contributor': '0xD1d899A105d9555555FA4De7AF0cc541195a4E1f', 'amount': '1.000000 ETH'}
 
-  → 0x9E4E2B9866D4d953AefA135d231b4f8608A8302e deposit 2.000000 ETH
-    event Deposited: {'contributor': '0x9E4E2B9866D4d953AefA135d231b4f8608A8302e', 'amount': '2.000000 ETH'}
+  → 0x6795e7050CFDa48F5AdcA113E71614917C3612AF deposit 2.000000 ETH
+    event Deposited: {'contributor': '0x6795e7050CFDa48F5AdcA113E71614917C3612AF', 'amount': '2.000000 ETH'}
 
-  → 0x271C0F3331a86604681a6Fadb1acc50aaDE5Cd55 deposit 3.000000 ETH
-    event Deposited: {'contributor': '0x271C0F3331a86604681a6Fadb1acc50aaDE5Cd55', 'amount': '3.000000 ETH'}
+  → 0x086Da92B43352419773196439a39fCdDDC2F28Ac deposit 3.000000 ETH
+    event Deposited: {'contributor': '0x086Da92B43352419773196439a39fCdDDC2F28Ac', 'amount': '3.000000 ETH'}
   [after deposits pool state]
     totalFundingPool : 6.000000 ETH
     totalLocked      : 0.000000 ETH
@@ -51,11 +51,11 @@ BTC address used as liquidity proof: 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa
     collateralPct    : 50
 
 -- contributors --
-    contrib[0]     0x597594CFB1Ba4061f182D259298Ced378A757795
+    contrib[0]     0xD1d899A105d9555555FA4De7AF0cc541195a4E1f
       wallet=3.999861 ETH  deposits=1.000000 ETH  locked=0.000000 ETH  disposable=1.000000 ETH
-    contrib[1]     0x9E4E2B9866D4d953AefA135d231b4f8608A8302e
+    contrib[1]     0x6795e7050CFDa48F5AdcA113E71614917C3612AF
       wallet=2.999895 ETH  deposits=2.000000 ETH  locked=0.000000 ETH  disposable=2.000000 ETH
-    contrib[2]     0x271C0F3331a86604681a6Fadb1acc50aaDE5Cd55
+    contrib[2]     0x086Da92B43352419773196439a39fCdDDC2F28Ac
       wallet=1.999895 ETH  deposits=3.000000 ETH  locked=0.000000 ETH  disposable=3.000000 ETH
 
 ------------------------------------------------------------------------
@@ -63,7 +63,7 @@ BTC address used as liquidity proof: 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa
 ------------------------------------------------------------------------
   pre-disposable[c0]: 1.000000 ETH
   -> withdraw 0.300000 ETH
-    event Withdrawn: {'contributor': '0x597594CFB1Ba4061f182D259298Ced378A757795', 'amount': '0.300000 ETH'}
+    event Withdrawn: {'contributor': '0xD1d899A105d9555555FA4De7AF0cc541195a4E1f', 'amount': '0.300000 ETH'}
   post-disposable[c0]: 0.700000 ETH
   [after withdraw pool state]
     totalFundingPool : 5.700000 ETH
@@ -73,11 +73,11 @@ BTC address used as liquidity proof: 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa
     collateralPct    : 50
 
 -- contributors --
-    contrib[0]     0x597594CFB1Ba4061f182D259298Ced378A757795
+    contrib[0]     0xD1d899A105d9555555FA4De7AF0cc541195a4E1f
       wallet=4.299811 ETH  deposits=0.700000 ETH  locked=0.000000 ETH  disposable=0.700000 ETH
-    contrib[1]     0x9E4E2B9866D4d953AefA135d231b4f8608A8302e
+    contrib[1]     0x6795e7050CFDa48F5AdcA113E71614917C3612AF
       wallet=2.999895 ETH  deposits=2.000000 ETH  locked=0.000000 ETH  disposable=2.000000 ETH
-    contrib[2]     0x271C0F3331a86604681a6Fadb1acc50aaDE5Cd55
+    contrib[2]     0x086Da92B43352419773196439a39fCdDDC2F28Ac
       wallet=1.999895 ETH  deposits=3.000000 ETH  locked=0.000000 ETH  disposable=3.000000 ETH
 
 ------------------------------------------------------------------------
@@ -85,7 +85,7 @@ BTC address used as liquidity proof: 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa
 ------------------------------------------------------------------------
   MIN_ORACLE_FEE: 4,566,700,000,000 wei
   -> applicant[0] requestOracleUpdate(btcHash) fee=4,566,700,000,000 wei
-    event UpdateRequested: {'btcAddressHash': b'w\xc6\xe9\xd5\xd9?\xf9\x92\x11)\xdd\xed\xcc-\x85\x9b\xd5J{\xe8\x13C\xf6\x0c\x11\x96\x1d\xa1\xe5O[\xe3', 'requester': '0x7EbCb1AEA65285C0f41F1A4A020290393a7E625a'}
+    event UpdateRequested: {'btcAddressHash': b'w\xc6\xe9\xd5\xd9?\xf9\x92\x11)\xdd\xed\xcc-\x85\x9b\xd5J{\xe8\x13C\xf6\x0c\x11\x96\x1d\xa1\xe5O[\xe3', 'requester': '0x6EC0A45841be14A63C041C04A896B7F3EeAB33A7'}
   waiting for off-chain oracle_service to publish BalanceUpdated…
   SUCCESS - BalanceUpdated: 5,004,000,000 satoshi  ->  1501.200000 ETH (BTC/ETH=30)
 
@@ -93,72 +93,75 @@ BTC address used as liquidity proof: 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa
   Step 5/16 - submit proposal 1
 ------------------------------------------------------------------------
   -> applicant[0] submitProposal(amount=1.000000 ETH, rate=20%, duration=40, btcHash)
-    event ProposalSubmitted: {'proposalId': 0, 'applicant': '0x840CB86b9aCB31ca18359b212A7CFF587Bcb3ca0', 'amount': '1.000000 ETH'}
+    event ProposalSubmitted: {'proposalId': 0, 'applicant': '0x3E11d857A6A8e45D657Eb33d124A20C8333D16e7', 'amount': '1.000000 ETH'}
   proposalId           : 0
-  applicant            : 0x840CB86b9aCB31ca18359b212A7CFF587Bcb3ca0
+  applicant            : 0x3E11d857A6A8e45D657Eb33d124A20C8333D16e7
   amount               : 1.000000 ETH
   interestRate         : 20%
   duration             : 40 blocks
-  submittedBlock       : 5460
+  submittedBlock       : 6674
   status               : 0 (0=Active)
 
 ------------------------------------------------------------------------
   Step 6/16 - voting (proposal 1)
 ------------------------------------------------------------------------
 
-  -> 0x597594CFB1Ba4061f182D259298Ced378A757795 votes REJECT (weight=0.700000 ETH)
-    event ProposalVoted: {'proposalId': 0, 'voter': '0x597594CFB1Ba4061f182D259298Ced378A757795', 'approve': False}
+  -> 0xD1d899A105d9555555FA4De7AF0cc541195a4E1f votes REJECT (weight=0.700000 ETH)
+    event ProposalVoted: {'proposalId': 0, 'voter': '0xD1d899A105d9555555FA4De7AF0cc541195a4E1f', 'approve': False}
 
-  -> 0x9E4E2B9866D4d953AefA135d231b4f8608A8302e votes APPROVE (weight=2.000000 ETH)
-    event ProposalVoted: {'proposalId': 0, 'voter': '0x9E4E2B9866D4d953AefA135d231b4f8608A8302e', 'approve': True}
+  -> 0x6795e7050CFDa48F5AdcA113E71614917C3612AF votes APPROVE (weight=2.000000 ETH)
+    event ProposalVoted: {'proposalId': 0, 'voter': '0x6795e7050CFDa48F5AdcA113E71614917C3612AF', 'approve': True}
 
-  -> 0x271C0F3331a86604681a6Fadb1acc50aaDE5Cd55 votes APPROVE (weight=3.000000 ETH)
-    event ProposalVoted: {'proposalId': 0, 'voter': '0x271C0F3331a86604681a6Fadb1acc50aaDE5Cd55', 'approve': True}
+  -> 0x086Da92B43352419773196439a39fCdDDC2F28Ac votes APPROVE (weight=3.000000 ETH)
+    event ProposalVoted: {'proposalId': 0, 'voter': '0x086Da92B43352419773196439a39fCdDDC2F28Ac', 'approve': True}
 
 ------------------------------------------------------------------------
   Step 7/16 - mine PROPOSAL_VOTING_PERIOD + 1 blocks
 ------------------------------------------------------------------------
   PROPOSAL_VOTING_PERIOD = 12; mining 13 blocks
-  block before: 5466
-    (waiting for chain to reach block 5479 - current 5466 …)
-    reached block 5480
-  block after:  5480
+  block before: 6680
+    (waiting for chain to reach block 6693 - current 6680 …)
+    reached block 6694
+  block after:  6694
 
 ------------------------------------------------------------------------
   Step 8/16 - resolve proposal 1
 ------------------------------------------------------------------------
   -> applicant[0] resolveProposal(0)
-    event ProposalApproved: {'proposalId': 0, 'loanContract': '0x4c3f19847840D3BdcF3728b92A49534f564A9fB3', 'loanedAmount': '1.000000 ETH'}
-    event LoanRegistered: {'loanContract': '0x4c3f19847840D3BdcF3728b92A49534f564A9fB3'}
-  LoanContract        : 0x4c3f19847840D3BdcF3728b92A49534f564A9fB3
+    event ProposalApproved: {'proposalId': 0, 'loanContract': '0xe6b3D9204767c5B14c7AE5A2C9E989d4C5C1fF3d', 'loanedAmount': '1.000000 ETH'}
+    event LoanRegistered: {'loanContract': '0xe6b3D9204767c5B14c7AE5A2C9E989d4C5C1fF3d'}
+  LoanContract        : 0xe6b3D9204767c5B14c7AE5A2C9E989d4C5C1fF3d
   loanedAmount (event): 1.000000 ETH (may be < proposal.amount due to floor rounding)
 
 ------------------------------------------------------------------------
   Step 9/16 - inspect new LoanContract
 ------------------------------------------------------------------------
-  [loan1 loan state @ 0x4c3f19847840D3BdcF3728b92A49534f564A9fB3]
-    applicant            : 0x840CB86b9aCB31ca18359b212A7CFF587Bcb3ca0
+  [loan1 loan state @ 0xe6b3D9204767c5B14c7AE5A2C9E989d4C5C1fF3d]
+    applicant            : 0x3E11d857A6A8e45D657Eb33d124A20C8333D16e7
     loanedAmount         : 1.000000 ETH
     collateralPercentage : 50
-    expiryBlock          : 5522
+    expiryBlock          : 6736
     remainingLoanAmount  : 1.000000 ETH
     status               : 0 (0=Active, 1=Failed, 2=Successful)
-    contributorCount     : 3
-      #0 0x271C0F3331a86604681a6Fadb1acc50aaDE5Cd55  initialLocked=0.526316 ETH  unlockedSoFar=0.000000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
-      #1 0x9E4E2B9866D4d953AefA135d231b4f8608A8302e  initialLocked=0.350877 ETH  unlockedSoFar=0.000000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
-      #2 0x597594CFB1Ba4061f182D259298Ced378A757795  initialLocked=0.122807 ETH  unlockedSoFar=0.000000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
+    contributorCount     : 3  (#i = posizione ordinata per initialLocked DECRESCENTE, NON l'indice contrib[N])
+      #0 contrib[2] 0x086Da92B43352419773196439a39fCdDDC2F28Ac  initialLocked=0.526316 ETH  disposable=2.473684 ETH
+          unlockedSoFar=0.000000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
+      #1 contrib[1] 0x6795e7050CFDa48F5AdcA113E71614917C3612AF  initialLocked=0.350877 ETH  disposable=1.649123 ETH
+          unlockedSoFar=0.000000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
+      #2 contrib[0] 0xD1d899A105d9555555FA4De7AF0cc541195a4E1f  initialLocked=0.122807 ETH  disposable=0.577193 ETH
+          unlockedSoFar=0.000000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
 
 -- contributors after lock --
-    contrib[0]     0x597594CFB1Ba4061f182D259298Ced378A757795
+    contrib[0]     0xD1d899A105d9555555FA4De7AF0cc541195a4E1f
       wallet=4.299752 ETH  deposits=0.700000 ETH  locked=0.122807 ETH  disposable=0.577193 ETH
-    contrib[1]     0x9E4E2B9866D4d953AefA135d231b4f8608A8302e
+    contrib[1]     0x6795e7050CFDa48F5AdcA113E71614917C3612AF
       wallet=2.999772 ETH  deposits=2.000000 ETH  locked=0.350877 ETH  disposable=1.649123 ETH
-    contrib[2]     0x271C0F3331a86604681a6Fadb1acc50aaDE5Cd55
+    contrib[2]     0x086Da92B43352419773196439a39fCdDDC2F28Ac
       wallet=1.999789 ETH  deposits=3.000000 ETH  locked=0.526316 ETH  disposable=2.473684 ETH
 
 -- applicants (loan disbursed to a0) --
-    applicant[0]   0x840CB86b9aCB31ca18359b212A7CFF587Bcb3ca0  wallet=1.997677 ETH
-    applicant[1]   0xc2429436B88a796F049cFF281f302d8b5A3045Cb  wallet=1.000000 ETH
+    applicant[0]   0x3E11d857A6A8e45D657Eb33d124A20C8333D16e7  wallet=1.997677 ETH
+    applicant[1]   0xd347949548f05fAc8A5Ccb97836Ab1C500375877  wallet=1.000000 ETH
   [post-resolve pool state]
     totalFundingPool : 5.700000 ETH
     totalLocked      : 1.000000 ETH
@@ -171,24 +174,27 @@ BTC address used as liquidity proof: 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa
 ------------------------------------------------------------------------
   -> applicant[0] partialRepay value=0.400000 ETH (remaining before=1.000000 ETH)
     event Repayment: {'baseAmount': '0.400000 ETH', 'interestPaid': 0, 'excessToComp': 0, 'toCompensation': 0, 'remainingBase': '0.600000 ETH', 'remainingInterest': '0.200000 ETH'}
-  [loan1 mid loan state @ 0x4c3f19847840D3BdcF3728b92A49534f564A9fB3]
-    applicant            : 0x840CB86b9aCB31ca18359b212A7CFF587Bcb3ca0
+  [loan1 mid loan state @ 0xe6b3D9204767c5B14c7AE5A2C9E989d4C5C1fF3d]
+    applicant            : 0x3E11d857A6A8e45D657Eb33d124A20C8333D16e7
     loanedAmount         : 1.000000 ETH
     collateralPercentage : 50
-    expiryBlock          : 5522
+    expiryBlock          : 6736
     remainingLoanAmount  : 0.600000 ETH
     status               : 0 (0=Active, 1=Failed, 2=Successful)
-    contributorCount     : 3
-      #0 0x271C0F3331a86604681a6Fadb1acc50aaDE5Cd55  initialLocked=0.526316 ETH  unlockedSoFar=0.400000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
-      #1 0x9E4E2B9866D4d953AefA135d231b4f8608A8302e  initialLocked=0.350877 ETH  unlockedSoFar=0.000000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
-      #2 0x597594CFB1Ba4061f182D259298Ced378A757795  initialLocked=0.122807 ETH  unlockedSoFar=0.000000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
+    contributorCount     : 3  (#i = posizione ordinata per initialLocked DECRESCENTE, NON l'indice contrib[N])
+      #0 contrib[2] 0x086Da92B43352419773196439a39fCdDDC2F28Ac  initialLocked=0.526316 ETH  disposable=2.873684 ETH
+          unlockedSoFar=0.400000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
+      #1 contrib[1] 0x6795e7050CFDa48F5AdcA113E71614917C3612AF  initialLocked=0.350877 ETH  disposable=1.649123 ETH
+          unlockedSoFar=0.000000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
+      #2 contrib[0] 0xD1d899A105d9555555FA4De7AF0cc541195a4E1f  initialLocked=0.122807 ETH  disposable=0.577193 ETH
+          unlockedSoFar=0.000000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
 
 -- contributors after mid repay --
-    contrib[0]     0x597594CFB1Ba4061f182D259298Ced378A757795
+    contrib[0]     0xD1d899A105d9555555FA4De7AF0cc541195a4E1f
       wallet=4.299752 ETH  deposits=0.700000 ETH  locked=0.122807 ETH  disposable=0.577193 ETH
-    contrib[1]     0x9E4E2B9866D4d953AefA135d231b4f8608A8302e
+    contrib[1]     0x6795e7050CFDa48F5AdcA113E71614917C3612AF
       wallet=2.999772 ETH  deposits=2.000000 ETH  locked=0.350877 ETH  disposable=1.649123 ETH
-    contrib[2]     0x271C0F3331a86604681a6Fadb1acc50aaDE5Cd55
+    contrib[2]     0x086Da92B43352419773196439a39fCdDDC2F28Ac
       wallet=1.999789 ETH  deposits=3.000000 ETH  locked=0.126316 ETH  disposable=2.873684 ETH
   [post-mid-repay pool state]
     totalFundingPool : 5.700000 ETH
@@ -203,37 +209,40 @@ BTC address used as liquidity proof: 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa
   remaining=0.600000 ETH  interest=0.200000 ETH   total send=0.800000 ETH
     event Repayment: {'baseAmount': '0.600000 ETH', 'interestPaid': '0.200000 ETH', 'excessToComp': 0, 'toCompensation': '0.100000 ETH', 'remainingBase': 0, 'remainingInterest': 0}
     event LoanClosed: {'status': 2}
-    event LoanDeregistered: {'loanContract': '0x4c3f19847840D3BdcF3728b92A49534f564A9fB3'}
+    event LoanDeregistered: {'loanContract': '0xe6b3D9204767c5B14c7AE5A2C9E989d4C5C1fF3d'}
     event CollateralPercentageChanged: {'newValue': 45}
 
 -- interest paid to each contributor (this step) --
-    contrib[2]     0x271C0F3331a86604681a6Fadb1acc50aaDE5Cd55
+    contrib[2]     0x086Da92B43352419773196439a39fCdDDC2F28Ac
       grossInterest=0.105263 ETH  netToContributor=0.052632 ETH  toCompPool(collateral)=0.052632 ETH
-    contrib[1]     0x9E4E2B9866D4d953AefA135d231b4f8608A8302e
+    contrib[1]     0x6795e7050CFDa48F5AdcA113E71614917C3612AF
       grossInterest=0.070175 ETH  netToContributor=0.035088 ETH  toCompPool(collateral)=0.035088 ETH
-    contrib[0]     0x597594CFB1Ba4061f182D259298Ced378A757795
+    contrib[0]     0xD1d899A105d9555555FA4De7AF0cc541195a4E1f
       grossInterest=0.024561 ETH  netToContributor=0.012281 ETH  toCompPool(collateral)=0.012281 ETH
   status               : 2
-  collateralPercentage : 50 → 45
+  collateralPercentage : 50 -> 45
   isActiveLoan         : False
-  [loan1 closed loan state @ 0x4c3f19847840D3BdcF3728b92A49534f564A9fB3]
-    applicant            : 0x840CB86b9aCB31ca18359b212A7CFF587Bcb3ca0
+  [loan1 closed loan state @ 0xe6b3D9204767c5B14c7AE5A2C9E989d4C5C1fF3d]
+    applicant            : 0x3E11d857A6A8e45D657Eb33d124A20C8333D16e7
     loanedAmount         : 1.000000 ETH
     collateralPercentage : 50
-    expiryBlock          : 5522
+    expiryBlock          : 6736
     remainingLoanAmount  : 0.000000 ETH
     status               : 2 (0=Active, 1=Failed, 2=Successful)
-    contributorCount     : 3
-      #0 0x271C0F3331a86604681a6Fadb1acc50aaDE5Cd55  initialLocked=0.526316 ETH  unlockedSoFar=0.526316 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
-      #1 0x9E4E2B9866D4d953AefA135d231b4f8608A8302e  initialLocked=0.350877 ETH  unlockedSoFar=0.350877 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
-      #2 0x597594CFB1Ba4061f182D259298Ced378A757795  initialLocked=0.122807 ETH  unlockedSoFar=0.122807 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
+    contributorCount     : 3  (#i = posizione ordinata per initialLocked DECRESCENTE, NON l'indice contrib[N])
+      #0 contrib[2] 0x086Da92B43352419773196439a39fCdDDC2F28Ac  initialLocked=0.526316 ETH  disposable=3.000000 ETH
+          unlockedSoFar=0.526316 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
+      #1 contrib[1] 0x6795e7050CFDa48F5AdcA113E71614917C3612AF  initialLocked=0.350877 ETH  disposable=2.000000 ETH
+          unlockedSoFar=0.350877 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
+      #2 contrib[0] 0xD1d899A105d9555555FA4De7AF0cc541195a4E1f  initialLocked=0.122807 ETH  disposable=0.700000 ETH
+          unlockedSoFar=0.122807 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
 
 -- contributors after close (lockedValue restored) --
-    contrib[0]     0x597594CFB1Ba4061f182D259298Ced378A757795
+    contrib[0]     0xD1d899A105d9555555FA4De7AF0cc541195a4E1f
       wallet=4.312032 ETH  deposits=0.700000 ETH  locked=0.000000 ETH  disposable=0.700000 ETH
-    contrib[1]     0x9E4E2B9866D4d953AefA135d231b4f8608A8302e
+    contrib[1]     0x6795e7050CFDa48F5AdcA113E71614917C3612AF
       wallet=3.034859 ETH  deposits=2.000000 ETH  locked=0.000000 ETH  disposable=2.000000 ETH
-    contrib[2]     0x271C0F3331a86604681a6Fadb1acc50aaDE5Cd55
+    contrib[2]     0x086Da92B43352419773196439a39fCdDDC2F28Ac
       wallet=2.052420 ETH  deposits=3.000000 ETH  locked=0.000000 ETH  disposable=3.000000 ETH
   [post-close pool state]
     totalFundingPool : 5.700000 ETH
@@ -243,63 +252,69 @@ BTC address used as liquidity proof: 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa
     collateralPct    : 45
 
 -- applicants --
-    applicant[0]   0x840CB86b9aCB31ca18359b212A7CFF587Bcb3ca0  wallet=0.797312 ETH
-    applicant[1]   0xc2429436B88a796F049cFF281f302d8b5A3045Cb  wallet=1.000000 ETH
+    applicant[0]   0x3E11d857A6A8e45D657Eb33d124A20C8333D16e7  wallet=0.797312 ETH
+    applicant[1]   0xd347949548f05fAc8A5Ccb97836Ab1C500375877  wallet=1.000000 ETH
 
 ------------------------------------------------------------------------
-  Step 12/16 — failed-loan scenario (proposal 2, applicant[1])
+  Step 12/16 - failed-loan scenario (proposal 2, applicant[1])
 ------------------------------------------------------------------------
-  → applicant[1] submitProposal(amount=0.600000 ETH, rate=30%, duration=15, btcHash)
-    event ProposalSubmitted: {'proposalId': 1, 'applicant': '0xc2429436B88a796F049cFF281f302d8b5A3045Cb', 'amount': '0.600000 ETH'}
-  vote APPROVE by 0x597594CFB1Ba4061f182D259298Ced378A757795
-  vote APPROVE by 0x9E4E2B9866D4d953AefA135d231b4f8608A8302e
-  vote APPROVE by 0x271C0F3331a86604681a6Fadb1acc50aaDE5Cd55
-    (waiting for chain to reach block 5507 - current 5494 …)
-    reached block 5508
-    event ProposalApproved: {'proposalId': 1, 'loanContract': '0x65a93ec6386585dC168d80FcD7878C0b69007f83', 'loanedAmount': '0.600000 ETH'}
-  LoanContract (loan2): 0x65a93ec6386585dC168d80FcD7878C0b69007f83  loanedAmount=0.600000 ETH
-  [loan2 active loan state @ 0x65a93ec6386585dC168d80FcD7878C0b69007f83]
-    applicant            : 0xc2429436B88a796F049cFF281f302d8b5A3045Cb
+  -> applicant[1] submitProposal(amount=0.600000 ETH, rate=30%, duration=15, btcHash)
+    event ProposalSubmitted: {'proposalId': 1, 'applicant': '0xd347949548f05fAc8A5Ccb97836Ab1C500375877', 'amount': '0.600000 ETH'}
+  vote APPROVE by 0xD1d899A105d9555555FA4De7AF0cc541195a4E1f
+  vote APPROVE by 0x6795e7050CFDa48F5AdcA113E71614917C3612AF
+  vote APPROVE by 0x086Da92B43352419773196439a39fCdDDC2F28Ac
+    (waiting for chain to reach block 6721 - current 6708 …)
+    reached block 6722
+    event ProposalApproved: {'proposalId': 1, 'loanContract': '0x60c67eDd27d9DB39c23AC3C6437e609Ff03A8835', 'loanedAmount': '0.600000 ETH'}
+  LoanContract (loan2): 0x60c67eDd27d9DB39c23AC3C6437e609Ff03A8835  loanedAmount=0.600000 ETH
+  [loan2 active loan state @ 0x60c67eDd27d9DB39c23AC3C6437e609Ff03A8835]
+    applicant            : 0xd347949548f05fAc8A5Ccb97836Ab1C500375877
     loanedAmount         : 0.600000 ETH
     collateralPercentage : 45
-    expiryBlock          : 5525
+    expiryBlock          : 6739
     remainingLoanAmount  : 0.600000 ETH
     status               : 0 (0=Active, 1=Failed, 2=Successful)
-    contributorCount     : 3
-      #0 0x271C0F3331a86604681a6Fadb1acc50aaDE5Cd55  initialLocked=0.315789 ETH  unlockedSoFar=0.000000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
-      #1 0x9E4E2B9866D4d953AefA135d231b4f8608A8302e  initialLocked=0.210526 ETH  unlockedSoFar=0.000000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
-      #2 0x597594CFB1Ba4061f182D259298Ced378A757795  initialLocked=0.073684 ETH  unlockedSoFar=0.000000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
+    contributorCount     : 3  (#i = posizione ordinata per initialLocked DECRESCENTE, NON l'indice contrib[N])
+      #0 contrib[2] 0x086Da92B43352419773196439a39fCdDDC2F28Ac  initialLocked=0.315789 ETH  disposable=2.684211 ETH
+          unlockedSoFar=0.000000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
+      #1 contrib[1] 0x6795e7050CFDa48F5AdcA113E71614917C3612AF  initialLocked=0.210526 ETH  disposable=1.789474 ETH
+          unlockedSoFar=0.000000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
+      #2 contrib[0] 0xD1d899A105d9555555FA4De7AF0cc541195a4E1f  initialLocked=0.073684 ETH  disposable=0.626316 ETH
+          unlockedSoFar=0.000000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
 
-  applicant[1] does NOT repay. Mining 16 blocks to push past expiry…
-    (waiting for chain to reach block 5526 - current 5510 …)
-    reached block 5526
-  current block: 5526  expiryBlock: 5525
+  applicant[1] does NOT repay. Mining 16 blocks to go past expiry…
+    (waiting for chain to reach block 6740 - current 6724 …)
+    reached block 6740
+  current block: 6740  expiryBlock: 6739
   isExpired: True
 
 ------------------------------------------------------------------------
-  Step 13/16 — requestCompensation (contrib[2], largest stake first)
+  Step 13/16 - requestCompensation (contrib[2])
 ------------------------------------------------------------------------
-  → 0x271C0F3331a86604681a6Fadb1acc50aaDE5Cd55 requestCompensation()
+  → 0x086Da92B43352419773196439a39fCdDDC2F28Ac requestCompensation()
   pre  alreadyCompensated: 0.000000 ETH
   pre  compensationPool:   0.100000 ETH
     event MarkedFailed: {}
-    event CompensationRequested: {'contributor': '0x271C0F3331a86604681a6Fadb1acc50aaDE5Cd55', 'owed': '0.315789 ETH', 'paid': '0.100000 ETH'}
+    event CompensationRequested: {'contributor': '0x086Da92B43352419773196439a39fCdDDC2F28Ac', 'owed': '0.315789 ETH', 'paid': '0.100000 ETH'}
     event CollateralPercentageChanged: {'newValue': 50}
   status (loan2)         : 1 (expect 1=Failed)
   collateralPercentage   : 45 → 50 (expect +5 on first claim)
   alreadyCompensated     : 0.100000 ETH
   compRecovered          : 0.000000 ETH
-  [loan2 failed loan state @ 0x65a93ec6386585dC168d80FcD7878C0b69007f83]
-    applicant            : 0xc2429436B88a796F049cFF281f302d8b5A3045Cb
+  [loan2 failed loan state @ 0x60c67eDd27d9DB39c23AC3C6437e609Ff03A8835]
+    applicant            : 0xd347949548f05fAc8A5Ccb97836Ab1C500375877
     loanedAmount         : 0.600000 ETH
     collateralPercentage : 45
-    expiryBlock          : 5525
+    expiryBlock          : 6739
     remainingLoanAmount  : 0.600000 ETH
     status               : 1 (0=Active, 1=Failed, 2=Successful)
-    contributorCount     : 3
-      #0 0x271C0F3331a86604681a6Fadb1acc50aaDE5Cd55  initialLocked=0.315789 ETH  unlockedSoFar=0.000000 ETH  alreadyCompensated=0.100000 ETH  compRecovered=0.000000 ETH
-      #1 0x9E4E2B9866D4d953AefA135d231b4f8608A8302e  initialLocked=0.210526 ETH  unlockedSoFar=0.000000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
-      #2 0x597594CFB1Ba4061f182D259298Ced378A757795  initialLocked=0.073684 ETH  unlockedSoFar=0.000000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
+    contributorCount     : 3  (#i = posizione ordinata per initialLocked DECRESCENTE, NON l'indice contrib[N])
+      #0 contrib[2] 0x086Da92B43352419773196439a39fCdDDC2F28Ac  initialLocked=0.315789 ETH  disposable=2.784211 ETH
+          unlockedSoFar=0.000000 ETH  alreadyCompensated=0.100000 ETH  compRecovered=0.000000 ETH
+      #1 contrib[1] 0x6795e7050CFDa48F5AdcA113E71614917C3612AF  initialLocked=0.210526 ETH  disposable=1.789474 ETH
+          unlockedSoFar=0.000000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
+      #2 contrib[0] 0xD1d899A105d9555555FA4De7AF0cc541195a4E1f  initialLocked=0.073684 ETH  disposable=0.626316 ETH
+          unlockedSoFar=0.000000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
   [post-comp-claim pool state]
     totalFundingPool : 5.700000 ETH
     totalLocked      : 0.500000 ETH
@@ -313,24 +328,27 @@ BTC address used as liquidity proof: 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa
   → applicant[1] partialRepay value=0.250000 ETH
     event Repayment: {'baseAmount': '0.250000 ETH', 'interestPaid': 0, 'excessToComp': 0, 'toCompensation': '0.079167 ETH', 'remainingBase': '0.350000 ETH', 'remainingInterest': 0}
   status (loan2)       : 1 (stays 1=Failed — Failed loan never becomes Successful, per spec)
-  [loan2 after late repay loan state @ 0x65a93ec6386585dC168d80FcD7878C0b69007f83]
-    applicant            : 0xc2429436B88a796F049cFF281f302d8b5A3045Cb
+  [loan2 after late repay loan state @ 0x60c67eDd27d9DB39c23AC3C6437e609Ff03A8835]
+    applicant            : 0xd347949548f05fAc8A5Ccb97836Ab1C500375877
     loanedAmount         : 0.600000 ETH
     collateralPercentage : 45
-    expiryBlock          : 5525
+    expiryBlock          : 6739
     remainingLoanAmount  : 0.350000 ETH
     status               : 1 (0=Active, 1=Failed, 2=Successful)
-    contributorCount     : 3
-      #0 0x271C0F3331a86604681a6Fadb1acc50aaDE5Cd55  initialLocked=0.315789 ETH  unlockedSoFar=0.170833 ETH  alreadyCompensated=0.100000 ETH  compRecovered=0.079167 ETH
-      #1 0x9E4E2B9866D4d953AefA135d231b4f8608A8302e  initialLocked=0.210526 ETH  unlockedSoFar=0.000000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
-      #2 0x597594CFB1Ba4061f182D259298Ced378A757795  initialLocked=0.073684 ETH  unlockedSoFar=0.000000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
+    contributorCount     : 3  (#i = posizione ordinata per initialLocked DECRESCENTE, NON l'indice contrib[N])
+      #0 contrib[2] 0x086Da92B43352419773196439a39fCdDDC2F28Ac  initialLocked=0.315789 ETH  disposable=2.955044 ETH
+          unlockedSoFar=0.170833 ETH  alreadyCompensated=0.100000 ETH  compRecovered=0.079167 ETH
+      #1 contrib[1] 0x6795e7050CFDa48F5AdcA113E71614917C3612AF  initialLocked=0.210526 ETH  disposable=1.789474 ETH
+          unlockedSoFar=0.000000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
+      #2 contrib[0] 0xD1d899A105d9555555FA4De7AF0cc541195a4E1f  initialLocked=0.073684 ETH  disposable=0.626316 ETH
+          unlockedSoFar=0.000000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
 
 -- contributors after late repay (waterfall: largest c saturated first) --
-    contrib[0]     0x597594CFB1Ba4061f182D259298Ced378A757795
+    contrib[0]     0xD1d899A105d9555555FA4De7AF0cc541195a4E1f
       wallet=4.311909 ETH  deposits=0.700000 ETH  locked=0.073684 ETH  disposable=0.626316 ETH
-    contrib[1]     0x9E4E2B9866D4d953AefA135d231b4f8608A8302e
+    contrib[1]     0x6795e7050CFDa48F5AdcA113E71614917C3612AF
       wallet=3.034753 ETH  deposits=2.000000 ETH  locked=0.210526 ETH  disposable=1.789474 ETH
-    contrib[2]     0x271C0F3331a86604681a6Fadb1acc50aaDE5Cd55
+    contrib[2]     0x086Da92B43352419773196439a39fCdDDC2F28Ac
       wallet=2.052228 ETH  deposits=3.000000 ETH  locked=0.044956 ETH  disposable=2.955044 ETH
   [post-late-repay pool state]
     totalFundingPool : 5.700000 ETH
@@ -342,35 +360,38 @@ BTC address used as liquidity proof: 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa
 ------------------------------------------------------------------------
   Step 15/16 — second compensation claim (refilled pool, multi-claim)
 ------------------------------------------------------------------------
-  → 0x271C0F3331a86604681a6Fadb1acc50aaDE5Cd55 requestCompensation()  (second call)
+  → 0x086Da92B43352419773196439a39fCdDDC2F28Ac requestCompensation()  (second call)
   pre  alreadyCompensated: 0.100000 ETH
   pre  compensationPool:   0.079167 ETH
   pre  collateralPct:      50
-    event CompensationRequested: {'contributor': '0x271C0F3331a86604681a6Fadb1acc50aaDE5Cd55', 'owed': '0.044956 ETH', 'paid': '0.044956 ETH'}
+    event CompensationRequested: {'contributor': '0x086Da92B43352419773196439a39fCdDDC2F28Ac', 'owed': '0.044956 ETH', 'paid': '0.044956 ETH'}
   MarkedFailed events    : 0 (expect 0 — loan can be marked failed only once)
   CollateralPctChanged   : 0 (expect 0 — pct only bumps on first claim)
   collateralPercentage   : 50 → 50 (expect unchanged)
   paid this call         : 0.044956 ETH (capped by compPool 0.079167 ETH)
   alreadyCompensated     : 0.100000 ETH → 0.144956 ETH
   compensationPool       : 0.079167 ETH → 0.034211 ETH
-  [loan2 after 2nd comp claim loan state @ 0x65a93ec6386585dC168d80FcD7878C0b69007f83]
-    applicant            : 0xc2429436B88a796F049cFF281f302d8b5A3045Cb
+  [loan2 after 2nd comp claim loan state @ 0x60c67eDd27d9DB39c23AC3C6437e609Ff03A8835]
+    applicant            : 0xd347949548f05fAc8A5Ccb97836Ab1C500375877
     loanedAmount         : 0.600000 ETH
     collateralPercentage : 45
-    expiryBlock          : 5525
+    expiryBlock          : 6739
     remainingLoanAmount  : 0.350000 ETH
     status               : 1 (0=Active, 1=Failed, 2=Successful)
-    contributorCount     : 3
-      #0 0x271C0F3331a86604681a6Fadb1acc50aaDE5Cd55  initialLocked=0.315789 ETH  unlockedSoFar=0.170833 ETH  alreadyCompensated=0.144956 ETH  compRecovered=0.079167 ETH
-      #1 0x9E4E2B9866D4d953AefA135d231b4f8608A8302e  initialLocked=0.210526 ETH  unlockedSoFar=0.000000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
-      #2 0x597594CFB1Ba4061f182D259298Ced378A757795  initialLocked=0.073684 ETH  unlockedSoFar=0.000000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
+    contributorCount     : 3  (#i = posizione ordinata per initialLocked DECRESCENTE, NON l'indice contrib[N])
+      #0 contrib[2] 0x086Da92B43352419773196439a39fCdDDC2F28Ac  initialLocked=0.315789 ETH  disposable=3.000000 ETH
+          unlockedSoFar=0.170833 ETH  alreadyCompensated=0.144956 ETH  compRecovered=0.079167 ETH
+      #1 contrib[1] 0x6795e7050CFDa48F5AdcA113E71614917C3612AF  initialLocked=0.210526 ETH  disposable=1.789474 ETH
+          unlockedSoFar=0.000000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
+      #2 contrib[0] 0xD1d899A105d9555555FA4De7AF0cc541195a4E1f  initialLocked=0.073684 ETH  disposable=0.626316 ETH
+          unlockedSoFar=0.000000 ETH  alreadyCompensated=0.000000 ETH  compRecovered=0.000000 ETH
 
 -- contributors after 2nd comp claim --
-    contrib[0]     0x597594CFB1Ba4061f182D259298Ced378A757795
+    contrib[0]     0xD1d899A105d9555555FA4De7AF0cc541195a4E1f
       wallet=4.311909 ETH  deposits=0.700000 ETH  locked=0.073684 ETH  disposable=0.626316 ETH
-    contrib[1]     0x9E4E2B9866D4d953AefA135d231b4f8608A8302e
+    contrib[1]     0x6795e7050CFDa48F5AdcA113E71614917C3612AF
       wallet=3.034753 ETH  deposits=2.000000 ETH  locked=0.210526 ETH  disposable=1.789474 ETH
-    contrib[2]     0x271C0F3331a86604681a6Fadb1acc50aaDE5Cd55
+    contrib[2]     0x086Da92B43352419773196439a39fCdDDC2F28Ac
       wallet=2.052181 ETH  deposits=3.000000 ETH  locked=0.000000 ETH  disposable=3.000000 ETH
   [post-2nd-comp-claim pool state]
     totalFundingPool : 5.700000 ETH
@@ -390,20 +411,20 @@ BTC address used as liquidity proof: 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa
     collateralPct    : 50
 
 -- contributors --
-    contrib[0]     0x597594CFB1Ba4061f182D259298Ced378A757795
+    contrib[0]     0xD1d899A105d9555555FA4De7AF0cc541195a4E1f
       wallet=4.311909 ETH  deposits=0.700000 ETH  locked=0.073684 ETH  disposable=0.626316 ETH
-    contrib[1]     0x9E4E2B9866D4d953AefA135d231b4f8608A8302e
+    contrib[1]     0x6795e7050CFDa48F5AdcA113E71614917C3612AF
       wallet=3.034753 ETH  deposits=2.000000 ETH  locked=0.210526 ETH  disposable=1.789474 ETH
-    contrib[2]     0x271C0F3331a86604681a6Fadb1acc50aaDE5Cd55
+    contrib[2]     0x086Da92B43352419773196439a39fCdDDC2F28Ac
       wallet=2.052181 ETH  deposits=3.000000 ETH  locked=0.000000 ETH  disposable=3.000000 ETH
 
 -- applicants --
-    applicant[0]   0x840CB86b9aCB31ca18359b212A7CFF587Bcb3ca0  wallet=0.797312 ETH
-    applicant[1]   0xc2429436B88a796F049cFF281f302d8b5A3045Cb  wallet=1.347587 ETH
+    applicant[0]   0x3E11d857A6A8e45D657Eb33d124A20C8333D16e7  wallet=0.797312 ETH
+    applicant[1]   0xd347949548f05fAc8A5Ccb97836Ab1C500375877  wallet=1.347587 ETH
 
 -- loan contracts registered --
-  loan1 (0x4c3f19847840D3BdcF3728b92A49534f564A9fB3) isActive=False
-  loan2 (0x65a93ec6386585dC168d80FcD7878C0b69007f83) isActive=True
+  loan1 (0xe6b3D9204767c5B14c7AE5A2C9E989d4C5C1fF3d) isActive=False
+  loan2 (0x60c67eDd27d9DB39c23AC3C6437e609Ff03A8835) isActive=True
   proposalCount        : 2
 
 ------------------------------------------------------------------------
