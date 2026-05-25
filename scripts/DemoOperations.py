@@ -456,15 +456,15 @@ def main():
     print_pool_state(pool, "post-late-repay")
 
     # Step 15: seconda richiesta di compensazione da parte dello stesso contributor, test pool refillato
-    banner("Step 15/16 — second compensation claim (refilled pool, multi-claim)")
+    banner("Step 15/16 - second compensation claim (refilled pool, multi-claim)")
     pct_before = pool.functions.collateralPercentage().call()
     comp_pool_before = pool.functions.compensationPool().call()
     already_before = loan2.functions.alreadyCompensated(claimer.address).call()
     print(f"  -> {claimer.address} requestCompensation()  (second call)")
-    print(f"  pre-alreadyCompensated: {fmt_eth(already_before)}")
-    print(f"  pre-compensationPool:   {fmt_eth(comp_pool_before)}")
-    print(f"  pre-collateralPct:      {pct_before}")
-    rcpt = send_tx(w3, claimer, loan2.functions.requestCompensation(), gas=600_000)
+    print(f"  pre-alreadyCompensated: {fmt_eth(already_before)}") # mostra quanto il contributor ha già ricevuto in compensazione per questo loan prima della seconda richiesta
+    print(f"  pre-compensationPool:   {fmt_eth(comp_pool_before)}") # mostra il valore attuale del compensation pool prima della seconda richiesta di compensazione, che determina il massimo che il contributor può ricevere in questa seconda richiesta
+    print(f"  pre-collateralPct:      {pct_before}") 
+    rcpt = send_tx(w3, claimer, loan2.functions.requestCompensation(), gas=600_000) 
     print_events(rcpt, loan2, ["CompensationRequested"])
     marked = parse_events(rcpt, loan2, "MarkedFailed")
     pct_changed = parse_events(rcpt, pool, "CollateralPercentageChanged")
@@ -472,20 +472,20 @@ def main():
     comp_pool_after = pool.functions.compensationPool().call()
     already_after = loan2.functions.alreadyCompensated(claimer.address).call()
     paid = already_after - already_before
-    print(f"  MarkedFailed events    : {len(marked)} (expect 0 — loan can be marked failed only once)")
-    print(f"  CollateralPctChanged   : {len(pct_changed)} (expect 0 — pct only bumps on first claim)")
-    print(f"  collateralPercentage   : {pct_before} → {pct_after} (expect unchanged)")
+    print(f"  MarkedFailed events    : {len(marked)}")
+    print(f"  CollateralPctChanged   : {len(pct_changed)}")
+    print(f"  collateralPercentage   : {pct_before} → {pct_after}")
     print(f"  paid this call         : {fmt_eth(paid)} "f"(capped by compPool {fmt_eth(comp_pool_before)})")
     print(f"  alreadyCompensated     : {fmt_eth(already_before)} → {fmt_eth(already_after)}")
     print(f"  compensationPool       : {fmt_eth(comp_pool_before)} → {fmt_eth(comp_pool_after)}")
-    print_loan_state(loan2, "loan2 after 2nd comp claim", pool, addr2label)
+    print_loan_state(loan2, "loan2 after 2nd comp claim", pool, addr2label) # mostra lo stato del loan2 dopo la seconda richiesta di compensazione
     section("contributors after 2nd comp claim")
     print_contributor_state(w3, pool, contrib_labels)
     print_pool_state(pool, "post-2nd-comp-claim")
 
-    # ── Step 16: final state ──────────────────────────────────────────────────
-    banner("Step 16/16 — final state")
-    print_pool_state(pool, "FINAL")
+    # Step 16: stato finale
+    banner("Step 16/16 - final state")
+    print_pool_state(pool, "FINAL") # stato finale del pool, che riflette tutte le operazioni effettuate durante la demo (depositi, lock per i prestiti, pagamenti, compensazioni, ecc...)
     section("contributors")
     print_contributor_state(w3, pool, contrib_labels)
     section("applicants")
