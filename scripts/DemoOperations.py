@@ -1,26 +1,7 @@
-"""
-scripts/DemoOperations.py — end-to-end demo of the P2PBC lending service.
-
-Drives every user-facing operation of LendingPool + LoanContract via the public
-RPC. Prints ETH balances and relevant state variables after each meaningful
-change (spec §1.5).
-
-Prerequisites
-  - geth/hardhat node running on RPC (default http://127.0.0.1:8545).
-  - InitialSetup.py already executed → data/accounts.json,
-    data/lending_pool_info.json, data/oracle_contract_info.json present.
-  - oracle/oracle_service.py running in background (with OPERATOR_PRIVATE_KEY
-    set) so requestOracleUpdate → BalanceUpdated cycle completes.
-  - npx hardhat compile (artifacts must exist).
-
-Scenario (16 steps): setup balances, deposits, partial withdraw, oracle update,
-proposal submit, voting, mine voting period, resolve, inspect loan,
-partialRepay (mid), partialRepay (close), failed-loan scenario, requestCompensation,
-late partialRepay, second compensation claim (refilled pool), final state.
-"""
+# permette di effettuare una demo end-to-end del servizio di lending P2PBC, guidando ogni operazione (16 steps)
 
 import json
-import os
+import os 
 import sys
 import time
 from pathlib import Path
@@ -29,27 +10,24 @@ from eth_account import Account
 from web3 import Web3
 from web3.logs import DISCARD
 
-# ── Paths ──────────────────────────────────────────────────────────────────────
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = PROJECT_ROOT / "data"
-ARTIFACTS = PROJECT_ROOT / "artifacts"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent # permette di risalire alla root del progetto, indipendentemente da dove viene eseguito lo script
+DATA_DIR = PROJECT_ROOT / "data" # cartella per input/output JSON 
+ARTIFACTS = PROJECT_ROOT / "artifacts"  # cartella per ABI/artifacts dei contratti compilati
 
-ACCOUNTS_FILE = DATA_DIR / "accounts.json"
+ACCOUNTS_FILE = DATA_DIR / "accounts.json" 
 POOL_INFO_FILE = DATA_DIR / "lending_pool_info.json"
 ORACLE_INFO_FILE = DATA_DIR / "oracle_contract_info.json"
 LOAN_ARTIFACT_FILE = ARTIFACTS / "contracts" / "LoanContract.sol" / "LoanContract.json"
 
-LOG_FILE = DATA_DIR / "demo_log.txt"
+LOG_FILE = DATA_DIR / "demo_log.txt" # log aggiunto per tracciare tutte le operazioni e gli eventi durante la demo
 
-# ── Config (env-overridable) ───────────────────────────────────────────────────
+# config
 
-RPC_URL = os.environ.get("RPC_URL", "http://127.0.0.1:8545")
-CHAIN_ID = int(os.environ.get("CHAIN_ID", "202526"))
+RPC_URL = os.environ.get("RPC_URL", "http://127.0.0.1:8545") 
+CHAIN_ID = int(os.environ.get("CHAIN_ID", "202526")) 
 
-# BTC address used as liquidity proof. Default = genesis coinbase
-# (50 BTC × 30 ETH/BTC = 1500 ETH equivalent — far above any demo loan).
-BTC_ADDRESS = os.environ.get("BTC_ADDR", "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa")
+BTC_ADDRESS = os.environ.get("BTC_ADDR", "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa") # indirizzo fornito da Satoshi Nakamoto nel blocco genesis di Bitcoin, usato come default per la demo
 
 ORACLE_EVENT_TIMEOUT_S = int(os.environ.get("ORACLE_TIMEOUT", "120"))
 
