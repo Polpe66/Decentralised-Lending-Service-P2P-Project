@@ -21,23 +21,31 @@ export const LOAN_ABI = loanArtifact.abi;
 // Default BTC address used in the Python demo (Satoshi genesis address).
 export const DEFAULT_BTC_ADDRESS = "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa";
 
-// Flatten accounts.json into a labelled, selectable identity list.
-export const ACCOUNTS = [
-  ...accounts.contributors.map((a, i) => ({
-    ...a,
-    label: `Contributor ${i + 1}`,
-    role: "contributor",
-  })),
-  ...accounts.applicants.map((a, i) => ({
-    ...a,
-    label: `Applicant ${i + 1}`,
-    role: "applicant",
-  })),
-  {
-    ...accounts.oracle_operator,
-    label: "Oracle operator",
-    role: "oracle",
-  },
-  { ...accounts.auto_voter, label: "Auto-voter", role: "contributor" },
-  { ...accounts.deployer, label: "Deployer (owner)", role: "owner" },
-];
+// The demo cast, address + label only. This is a read-only observer UI: it never
+// signs anything, so the private keys in accounts.json are intentionally NOT
+// imported here. DemoOperations.py uses the first 3 contributors / 2 applicants.
+export const CONTRIBUTORS = accounts.contributors.slice(0, 3).map((a, i) => ({
+  address: a.address,
+  label: `Contributor ${i + 1}`,
+  short: `C${i}`,
+}));
+
+export const APPLICANTS = accounts.applicants.slice(0, 2).map((a, i) => ({
+  address: a.address,
+  label: `Applicant ${i + 1}`,
+  short: `A${i}`,
+}));
+
+export const ORACLE_OPERATOR = {
+  address: accounts.oracle_operator.address,
+  label: "Oracle operator",
+};
+
+// addr (lowercase) -> role/label, for tagging events and loan participants.
+export const ADDR_LABELS = Object.fromEntries(
+  [
+    ...CONTRIBUTORS.map((c) => [c.address, { ...c, role: "contributor" }]),
+    ...APPLICANTS.map((a) => [a.address, { ...a, role: "applicant" }]),
+    [ORACLE_OPERATOR.address, { ...ORACLE_OPERATOR, role: "oracle" }],
+  ].map(([addr, v]) => [addr.toLowerCase(), v])
+);

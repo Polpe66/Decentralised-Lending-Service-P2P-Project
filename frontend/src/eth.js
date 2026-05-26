@@ -1,9 +1,4 @@
-import {
-  JsonRpcProvider,
-  Wallet,
-  Contract,
-  Network,
-} from "ethers";
+import { JsonRpcProvider, Contract, Network } from "ethers";
 import {
   RPC_URL,
   CHAIN_ID,
@@ -29,14 +24,4 @@ export const oracle = new Contract(ORACLE_ADDRESS, ORACLE_ABI, provider);
 // A LoanContract bound for reads at the given address.
 export function loanAt(address) {
   return new Contract(address, LOAN_ABI, provider);
-}
-
-// Build a signer-bound copy of a contract for the selected demo account.
-export function withSigner(contract, privateKey) {
-  const wallet = new Wallet(privateKey, provider);
-  return contract.connect(wallet);
-}
-
-export function signer(privateKey) {
-  return new Wallet(privateKey, provider);
 }

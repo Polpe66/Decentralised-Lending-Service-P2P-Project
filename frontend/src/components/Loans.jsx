@@ -1,8 +1,11 @@
 import { useState, useEffect } from "react";
-import { parseEther } from "ethers";
 import { useApp } from "../state";
-import { pool, loanAt, withSigner } from "../eth";
+import { pool, loanAt } from "../eth";
+import { ADDR_LABELS } from "../config";
 import { fmtEth, shortAddr, LOAN_STATUS, loanPill } from "../format";
+
+const labelFor = (addr) =>
+  ADDR_LABELS[addr?.toLowerCase()]?.label || shortAddr(addr);
 
 export default function Loans() {
   const { refreshKey } = useApp();
@@ -34,7 +37,7 @@ export default function Loans() {
   if (addrs.length === 0)
     return (
       <div className="text-sm text-slate-400">
-        No loans yet. Approve a proposal to deploy one.
+        No loans yet. A loan is deployed when a proposal is approved.
       </div>
     );
 
@@ -48,9 +51,8 @@ export default function Loans() {
 }
 
 function LoanCard({ address }) {
-  const { account, block, refreshKey, runTx } = useApp();
+  const { block, refreshKey } = useApp();
   const [d, setD] = useState(null);
-  const [repay, setRepay] = useState("0.4");
 
   useEffect(() => {
     let alive = true;
@@ -89,6 +91,7 @@ function LoanCard({ address }) {
             addr: ct[0],
             initialLocked: ct[1],
             unlocked: await c.unlockedSoFar(ct[0]),
+            compensated: await c.alreadyCompensated(ct[0]),
           });
         }
         if (alive)
@@ -116,29 +119,8 @@ function LoanCard({ address }) {
 
   if (!d) return null;
 
-  const isApplicant =
-    account.address.toLowerCase() === d.applicant.toLowerCase();
-  const isContributor = d.contributors.some(
-    (c) => c.addr.toLowerCase() === account.address.toLowerCase()
-  );
   const expired = block != null && block > d.expiryBlock;
   const blocksLeft = block != null ? d.expiryBlock - block : null;
-  const canRepay = !d.terminated && (d.status === 0 || d.status === 1);
-
-  const doRepay = () =>
-    runTx("Partial repay", () =>
-      withSigner(loanAt(address), account.key).partialRepay({
-        value: parseEther(repay),
-      })
-    );
-  const doCompensate = () =>
-    runTx("Request compensation", () =>
-      withSigner(loanAt(address), account.key).requestCompensation()
-    );
-  const doTerminate = () =>
-    runTx("Terminate loan", () =>
-      withSigner(loanAt(address), account.key).terminate()
-    );
 
   return (
     <div className="card space-y-3">
@@ -148,12 +130,10 @@ function LoanCard({ address }) {
           {LOAN_STATUS[d.status]}
         </span>
         {d.terminated && (
-          <span className="pill border-slate-500 text-slate-400">
-            terminated
-          </span>
+          <span className="pill border-slate-500 text-slate-400">terminated</span>
         )}
-        <span className="ml-auto text-xs text-slate-400 mono">
-          applicant {shortAddr(d.applicant)}
+        <span className="ml-auto text-xs text-slate-400">
+          {labelFor(d.applicant)}
         </span>
       </div>
 
@@ -177,41 +157,21 @@ function LoanCard({ address }) {
         />
       </div>
 
-      <div className="text-xs text-slate-400">
-        Contributors:{" "}
+      <div className="border-t border-line pt-2 space-y-1">
+        <div className="stat">Contributors</div>
         {d.contributors.map((c) => (
-          <span key={c.addr} className="mono mr-2">
-            {shortAddr(c.addr)} ({fmtEth(c.initialLocked, 3)})
-          </span>
-        ))}
-      </div>
-
-      <div className="flex flex-wrap gap-2 items-end border-t border-line pt-3">
-        {isApplicant && canRepay && (
-          <div className="flex gap-2 items-end">
-            <div>
-              <label className="label">Repay (ETH)</label>
-              <input
-                className="input mono w-28"
-                value={repay}
-                onChange={(e) => setRepay(e.target.value)}
-              />
-            </div>
-            <button className="btn btn-primary" onClick={doRepay}>
-              Partial repay
-            </button>
+          <div
+            key={c.addr}
+            className="flex justify-between gap-2 text-xs mono text-slate-300"
+          >
+            <span>{labelFor(c.addr)}</span>
+            <span className="text-slate-400">
+              locked {fmtEth(c.initialLocked, 3)} · unlocked{" "}
+              {fmtEth(c.unlocked, 3)}
+              {c.compensated > 0n && ` · comp ${fmtEth(c.compensated, 3)}`}
+            </span>
           </div>
-        )}
-        {isContributor && d.status !== 2 && !d.terminated && (
-          <button className="btn btn-ok" onClick={doCompensate}>
-            Request compensation
-          </button>
-        )}
-        {!d.terminated && d.status !== 0 && (
-          <button className="btn ml-auto" onClick={doTerminate}>
-            Terminate
-          </button>
-        )}
+        ))}
       </div>
     </div>
   );

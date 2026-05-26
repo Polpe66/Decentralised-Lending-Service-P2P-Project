@@ -4,89 +4,45 @@ import {
   useState,
   useEffect,
   useCallback,
-  useRef,
 } from "react";
 import { provider } from "./eth";
-import { ACCOUNTS } from "./config";
 
 const AppCtx = createContext(null);
 export const useApp = () => useContext(AppCtx);
 
-let toastId = 0;
-
+// Read-only observer state: tracks the live block number and bumps a refreshKey
+// on every new block so views refetch on-chain state as DemoOperations.py runs.
 export function AppProvider({ children }) {
-  const [account, setAccount] = useState(ACCOUNTS[0]);
   const [block, setBlock] = useState(null);
   const [online, setOnline] = useState(true);
-  // Bumped after every successful tx to trigger data refetches.
   const [refreshKey, setRefreshKey] = useState(0);
-  const [toasts, setToasts] = useState([]);
   const bump = useCallback(() => setRefreshKey((k) => k + 1), []);
 
-  const notify = useCallback((message, kind = "info") => {
-    const id = ++toastId;
-    setToasts((t) => [...t, { id, message, kind }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 6000);
-  }, []);
-
-  // Live block number via polling provider.
+  // Single polling loop: read the current block number and refetch on-chain
+  // state every 3s. Explicit getBlockNumber polling keeps the header block live
+  // (ethers' "block" event polling proved unreliable on this PoA node) and the
+  // bump refreshes views between blocks (PoA mines every ~10s).
   useEffect(() => {
     let alive = true;
-    const onBlock = (bn) => {
-      if (!alive) return;
-      setBlock(bn);
-      setOnline(true);
+    const tick = async () => {
+      try {
+        const bn = await provider.getBlockNumber();
+        if (!alive) return;
+        setBlock(bn);
+        setOnline(true);
+      } catch {
+        if (alive) setOnline(false);
+      }
+      if (alive) bump();
     };
-    provider.on("block", onBlock);
-    provider
-      .getBlockNumber()
-      .then(onBlock)
-      .catch(() => alive && setOnline(false));
+    tick();
+    const t = setInterval(tick, 3000);
     return () => {
       alive = false;
-      provider.off("block", onBlock);
+      clearInterval(t);
     };
-  }, []);
+  }, [bump]);
 
-  // New block can change derived state (countdowns, resolvability) -> refetch.
-  const lastBumpBlock = useRef(null);
-  useEffect(() => {
-    if (block != null && block !== lastBumpBlock.current) {
-      lastBumpBlock.current = block;
-      bump();
-    }
-  }, [block, bump]);
-
-  // Run a contract write: send, await receipt, toast, refresh. Returns receipt.
-  const runTx = useCallback(
-    async (label, txPromiseFn) => {
-      try {
-        notify(`${label}: sending…`, "info");
-        const tx = await txPromiseFn();
-        const receipt = await tx.wait();
-        notify(`${label}: confirmed (block ${receipt.blockNumber})`, "ok");
-        bump();
-        return receipt;
-      } catch (err) {
-        const reason =
-          err?.reason || err?.shortMessage || err?.message || "tx failed";
-        notify(`${label}: ${reason}`, "err");
-        throw err;
-      }
-    },
-    [notify, bump]
-  );
-
-  const value = {
-    account,
-    setAccount,
-    block,
-    online,
-    refreshKey,
-    bump,
-    notify,
-    toasts,
-    runTx,
-  };
+  const value = { block, online, refreshKey, bump };
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;
 }

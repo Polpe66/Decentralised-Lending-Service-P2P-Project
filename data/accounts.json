@@ -1,38 +1,38 @@
 {
   "deployer": {
-    "address": "0x92779a78BB9B418F6B100fC1D02731c44D2695fF",
-    "key": "20be04a763594220bb71602aeccbad5fa6be5d550a362d959c7c9cbe338fecd2"
+    "address": "0x3A237125b061a3c10c901D778CB07e3ad1FE125E",
+    "key": "c4e74e1a77a916f3456f109df074219bd0638b672340cec249c72d11d8da2fa4"
   },
   "oracle_operator": {
-    "address": "0x4b5025fBFA69d128dE862887F17680E2752f18bD",
-    "key": "2658a4ca606670610379cb7a4260648957cb57f67986befc07c9848413560e9b"
+    "address": "0xaC8D078bae1EBD970e5D4936043969A33Ef0fd81",
+    "key": "0089987d641bcf0d3ce708600d4d6b26358fc87ceaf3b5689ae5ca0c4d63f960"
   },
   "auto_voter": {
-    "address": "0xE15b0A66aeaf11e2F4d1079dB9b9EA5914FDF794",
-    "key": "c3d5a6ba8f151201781b99710f1e6835b14db04fe75ee62b8fd3cb1aa4b96474"
+    "address": "0xF9B81e946A921D02bfCbd5849C253D9A438C1028",
+    "key": "4b80dde6b03429a1a251bac308da1733e7f0cec307d673476180f249a0a13557"
   },
   "contributors": [
     {
-      "address": "0x6Bdb99645235D1B1f232E853E2008166186da374",
-      "key": "10a20defe6ec7deca0eb80fcb99f7b369111a8e79bfb27cb26ec96f47fa64069"
+      "address": "0xD4Abf4C1149E9EFf1b3D05A26b2bEBA0eD2144C5",
+      "key": "e662285afa50c8d530a00de2c43881164710fb7bb482bf9f6ec5032c7463f945"
     },
     {
-      "address": "0x577c9F55B6128B0eA462BEd237a3c5326425f5ad",
-      "key": "4b505aabd54cd682b3c283c45246116be584cc4debacaec0cb420410f64829a5"
+      "address": "0x33ef11F0E7E7B83B755d8cDCe552B3233C63c538",
+      "key": "4c4b06c707e6f75b8ff548dd2c088bc6897306501993617ad53c58f679d4b576"
     },
     {
-      "address": "0x010b5a18b8754FCcB7c5D0bf2468b9DEcb52ca5e",
-      "key": "239678a0a4454f9855a7849226c45b2c48218e3deaecf1234952126a46d14829"
+      "address": "0xDAF19A3e0c4eF7B281d3e8bF9146EDf36297caa0",
+      "key": "d50ec45854c80a808c67633fe4a311b1dc6239d9fd97f6ca4a063a008e463bf3"
     }
   ],
   "applicants": [
     {
-      "address": "0x9c0Bc5c4444dB28D0bbc6BEFf27474662b774cCa",
-      "key": "32955cd4e3802a2c9fc59edfe9828ba432293196435b27dd44429de8ffed323e"
+      "address": "0x8C4c8eC069B8C4390f44FCf7d5f64516D8Dd3c86",
+      "key": "66d7bf750287e013b69d24bf04f71966c4bd19d636bca37584e4b3bf52044723"
     },
     {
-      "address": "0xC9Fcf3E6fA71f3033A9870Cc0BA7FbF4B30aE851",
-      "key": "6abb332701393a930394e1cc3ca7eb6683db6f7db456f3402d8bd5616387292b"
+      "address": "0xA02EF4d6936270E28B80Ae82D949C0450F8a8095",
+      "key": "8b621e315a810d0b4cb4decd7c6d92ecfcbc552f8eac5bb4c2449cdb47d9e25d"
     }
   ]
 }

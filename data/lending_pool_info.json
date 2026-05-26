@@ -1,6 +1,6 @@
 {
-  "proxy": "0xE58A8Df7862b50Aec887b46Eea65620b489d55A8",
-  "implementation": "0x999b1af1C5dd93c7c270A36c2B87c27B50720ECf",
+  "proxy": "0x116e1c52211df5b89042D5133344d9b055ef4f07",
+  "implementation": "0xB850946526A69592B1c4E52e44c37e01d7e40b38",
   "abi": [
     {
       "inputs": [],

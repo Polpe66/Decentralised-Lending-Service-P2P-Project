@@ -46,3 +46,39 @@ body {
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
   }
 }
+
+/* Diagram edges: faint by default, animated dashed flow when an event lights
+   them up. vector-effect keeps stroke width constant under the stretched
+   viewBox (preserveAspectRatio="none"). */
+.edge {
+  stroke: #2a3346;
+  stroke-width: 1.5;
+}
+.edge-active {
+  stroke: #818cf8;
+  stroke-width: 2.5;
+  stroke-dasharray: 7 6;
+  animation: edge-flow 0.6s linear infinite;
+  filter: drop-shadow(0 0 3px rgba(129, 140, 248, 0.7));
+}
+@keyframes edge-flow {
+  to {
+    stroke-dashoffset: -13;
+  }
+}
+
+/* Node glow when an event touches that actor. */
+.node-pulse {
+  animation: node-pulse 1.4s ease-out infinite;
+}
+@keyframes node-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(129, 140, 248, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(129, 140, 248, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(129, 140, 248, 0);
+  }
+}
