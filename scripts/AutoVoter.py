@@ -223,31 +223,36 @@ def main() -> int:
     if not ensure_contributor(w3, pool, av_addr, av_key):
         return 1
 
-    # Punto di partenza: di default seguiamo solo le proposte NUOVE (da adesso in poi),
-    # come la vecchia semantica START_BLOCK=latest. Con START_BLOCK="0" si recuperano
-    # anche le proposte già esistenti (utile se l'AutoVoter parte dopo qualche submit).
-    if START_BLOCK == "latest":
-        next_pid = pool.functions.proposalCount().call()
-    else:
-        next_pid = int(START_BLOCK)
-    log("INFO", "watch", f"start_pid={next_pid}", "polling proposalCount (state via eth_call)")
+    # Scoperta proposte via EVENTI (spec §1.5/R9: "use events for this"). Usiamo un filtro
+    # LIVE (create_filter + get_new_entries), NON eth_getLogs storico: su questo nodo geth le
+    # query di log storiche filtrate per address ritornano vuoto, mentre i filtri live vicino
+    # alla testa funzionano (stesso metodo di oracle_service.py, che gira correttamente).
+    # from_block='latest' (default) → solo proposte nuove da adesso. START_BLOCK numerico forza
+    # un blocco di partenza, ma una scansione storica può incappare nel bug dell'indice log.
+    from_block = "latest" if START_BLOCK == "latest" else int(START_BLOCK)
+    proposal_filter = pool.events.ProposalSubmitted.create_filter(from_block=from_block)
+    log("INFO", "watch", f"from_block={from_block}", "live filter on ProposalSubmitted event")
 
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
 
-    # Main loop: NON usiamo eth_getLogs per scoprire le proposte. Su questo nodo geth le
-    # query di log filtrate per address sono inaffidabili (vedi fix in DemoOperations:
-    # eth_getLogs(address) ritorna vuoto anche se gli eventi esistono). Scopriamo le nuove
-    # proposte leggendo lo STATO con proposalCount() (eth_call, sempre coerente). Per ogni
-    # proposalId nuovo votiamo APPROVE; vote_approve fa i pre-check su status/hasVoted.
+    # Main loop: poll del filtro live per i nuovi eventi ProposalSubmitted. get_new_entries()
+    # ritorna solo i log apparsi dall'ultima chiamata. Per ogni proposta votiamo APPROVE;
+    # vote_approve fa i pre-check su status/hasVoted/isContributor.
     rpc_failures = 0
     while _running:
         try:
-            count = pool.functions.proposalCount().call()
-            for pid in range(next_pid, count):
-                log("INFO", "proposal_seen", f"pid={pid}", f"proposalCount={count}")
+            for ev in proposal_filter.get_new_entries():
+                pid = ev["args"]["proposalId"]
+                applicant = ev["args"]["applicant"]
+                amount = ev["args"]["amount"]
+                log(
+                    "INFO",
+                    "proposal_seen",
+                    f"pid={pid} applicant={applicant} amount={amount}",
+                    f"block={ev['blockNumber']}",
+                )
                 vote_approve(w3, pool, av_addr, av_key, pid)
-            next_pid = count
             rpc_failures = 0
         except Web3RPCError as e:
             rpc_failures += 1
