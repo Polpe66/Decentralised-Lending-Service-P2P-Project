@@ -569,93 +569,46 @@ describe("LoanContract", function () {
             expect(await loan.alreadyCompensated(c1.address)).to.equal(ONE_ETH + toComp);
         });
 
-        // ── Regression: residue underflow when toComp floors away from ideal ──
+        it("multi-installment repay after comp claim does not underflow lockedValue", async function () {       // verifica che se viene chiamata la funzione requestCompensation da un contributore dopo la scadenza del prestito, e il contributore riceve solo una parte dell'importo di compensazione che dovrebbe ricevere a causa di una compensation pool insufficiente,
+                                                                                                                //  ma successivamente viene effettuato un pagamento parziale che include una parte di compensazione e rifilla la compensation pool, e poi vengono effettuati ulteriori pagamenti parziali che coprono interamente l'importo residuo del prestito più gli interessi,
 
-        it("multi-installment repay after comp claim does not underflow lockedValue", async function () {
-            // Use small wei amounts that force floor rounding in toComp computation.
-            // Without the gap-routing fix in the residue pass, the close branch
-            // would attempt repayLockedValue(c1, 1) against a zero lockedValue
-            // and revert with "Underflow locked".
-            //
-            // Setup: c1 deposits 3 wei, c2 deposits 2 wei, loan = 5 wei.
-            // c1 claims 2 wei of compensation (pool seeded from a previous loan).
-            // Applicant repays in two installments of 2 + 3 wei.
-            // floor in toComp on first installment yields compRecovered=0 even
-            // though ideal would be 0.67 → gap of 1 wei needs to be routed to
-            // comp pool at close.
-            //
-            // We need a separate funded scenario since amounts here are in wei.
-            // Use new signers and a fresh setup (avoids the ETH-scale setup).
-            const [, , , , , , app2, d1, d2] = await ethers.getSigners();
+            const [, , , , , , app2, d1, d2] = await ethers.getSigners();                                       // setup: loan da 1M, d1=600k, d2=400k. Dopo scadenza, c1 owed=600k, c2 owed=400k.
 
-            // Use min-deposit-respecting amounts: deposits in 100_000 wei units
-            // so we get the rounding behavior in shares/toComp.
             const D1 = 600_000n;
             const D2 = 400_000n;
             const L = 1_000_000n;
             await pool.connect(d1).deposit({ value: D1 });
             await pool.connect(d2).deposit({ value: D2 });
-            await pool
-                .connect(app2)
-                .submitProposal(L, RATE, DURATION, BTC);
+            await pool.connect(app2).submitProposal(L, RATE, DURATION, BTC);
             await pool.connect(d1).vote(0n, true);
             await pool.connect(d2).vote(0n, true);
             await mine(15);
-            const r0 = await (
-                await pool.connect(app2).resolveProposal(0n)
-            ).wait();
-            const loan0Addr = r0.logs.find(
-                (l) => l.fragment && l.fragment.name === "ProposalApproved"
-            ).args[1];
+            const r0 = await (await pool.connect(app2).resolveProposal(0n)).wait();                                 // Loan A: 1M capitale, 100k interesse atteso. Collateral pct = 50. Dopo la scadenza, d1 owed = 600k, d2 owed = 400k.
+            const loan0Addr = r0.logs.find((l) => l.fragment && l.fragment.name === "ProposalApproved").args[1];
             const loan0 = LoanFactory.attach(loan0Addr);
 
-            // Fund the comp pool with a separate loan that fully repays with
-            // interest (so collateral lands in comp pool).
-            // Reuse loan0 itself: partialRepay with 2x value generates collateral.
-            await loan0.connect(app2).partialRepay({ value: L * 2n }); // closes, deposits collateral
-            // Now pool.compensationPool() > 0.
-
-            // Create the test loan B. (Need fresh proposalId.)
-            await pool
-                .connect(app2)
-                .submitProposal(L, RATE, DURATION, BTC);
+            await loan0.connect(app2).partialRepay({ value: L * 2n });                                              // applicant ripaga tutto il residuo + excess. Loan0 -> Successful. Comp pool +100k. Collateral pct resta 50 (no bump, loan successful).
+            await pool.connect(app2).submitProposal(L, RATE, DURATION, BTC);
             await pool.connect(d1).vote(1n, true);
             await pool.connect(d2).vote(1n, true);
             await mine(15);
-            const r1 = await (
-                await pool.connect(app2).resolveProposal(1n)
-            ).wait();
-            const loanBAddr = r1.logs.find(
-                (l) => l.fragment && l.fragment.name === "ProposalApproved"
-            ).args[1];
+            const r1 = await (await pool.connect(app2).resolveProposal(1n)).wait();
+            const loanBAddr = r1.logs.find((l) => l.fragment && l.fragment.name === "ProposalApproved").args[1];
             const loanB = LoanFactory.attach(loanBAddr);
 
-            // Expire and have d1 claim part of their loss.
             await mine(Number(DURATION) + 1);
-            // d1's initialLocked on this loan = 600_000. Claim → pool drains.
-            await loanB.connect(d1).requestCompensation();
+            await loanB.connect(d1).requestCompensation();                                                             // d1 claims compensation. LoanB -> Failed. Collateral pct = 55. c1 alreadyCompensated=600k, compRecovered=0, unlockedSoFar=0.
             const ac1 = await loanB.alreadyCompensated(d1.address);
             expect(ac1).to.be.gt(0n);
 
-            // Applicant repays in TWO installments to force floor rounding.
             await loanB.connect(app2).partialRepay({ value: L / 2n });
-            // Final installment closes the loan. Without the fix this would
-            // revert with "Underflow locked" on residue pass.
-            await expect(
-                loanB.connect(app2).partialRepay({ value: L - L / 2n })
-            ).to.not.be.reverted;
+            await expect(loanB.connect(app2).partialRepay({ value: L - L / 2n })).to.not.be.reverted;
 
-            // Books closed cleanly:
             expect(await loanB.remainingLoanAmount()).to.equal(0n);
-            // Loan stayed Failed (no Successful transition on failed-full-repay).
             expect(await loanB.status()).to.equal(1n);
-            // No outstanding gap left.
             expect(await loanB.compRecovered(d1.address)).to.equal(ac1);
-            // d1 made whole: alreadyCompensated + unlockedSoFar + residue = initialLocked.
-            const cumD1 =
-                (await loanB.alreadyCompensated(d1.address)) +
-                (await loanB.unlockedSoFar(d1.address));
-            expect(cumD1).to.equal(600_000n);
+            const cumD1 = (await loanB.alreadyCompensated(d1.address)) + (await loanB.unlockedSoFar(d1.address));
+            expect(cumD1).to.equal(600_000n);                                                                           // d1 ha ricevuto tutta la compensazione che doveva ricevere, tra compensazione diretta e unlocked da partialRepay, e non ha più nulla da ricevere. LockedValue di d1 non deve underfloware ma arrivare a 0.
         });
 
         // ── Failed loan: no interest to contributors; excess all to comp pool ──
