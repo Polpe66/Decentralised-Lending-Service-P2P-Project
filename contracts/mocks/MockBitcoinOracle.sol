@@ -2,7 +2,7 @@
 pragma solidity ^0.8.22;
 
 contract MockBitcoinOracle {
-    uint256 public constant MIN_ORACLE_FEE = 4_567_300_000_000;                     //fee minima per richiedere un aggiornamento all'oracolo
+    uint256 public constant MIN_ORACLE_FEE = 4_566_700_000_000;                     //fee minima per richiedere un aggiornamento all'oracolo
 
     mapping(bytes32 => uint256) private _ethEquivalents;                            // mapping che associa a ciascun hash (che rappresenta un blocco della blockchain di Bitcoin) un valore in ETH equivalente al valore totale dei BTC bloccati in quel blocco
 
