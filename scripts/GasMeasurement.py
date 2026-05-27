@@ -248,16 +248,15 @@ class Bench: # gestisce connessione web3, account di partenza, deploy e interazi
 
         self.send(c0, pool.functions.deposit(), value=DEPOSIT_WEI, gas=200_000)
         self.send(c1, pool.functions.deposit(), value=DEPOSIT_WEI, gas=200_000)
-        self.seed_btc(oracle, oracle_op, btc_hash, LARGE_BTC_SAT)
+        self.seed_btc(oracle, oracle_op, btc_hash, LARGE_BTC_SAT)    # seed di btc sufficiente per approvare proposta
 
-        rcpt = self.measure("submitProposal", "valid (amount<=disp, btc ok)", applicant, pool.functions.submitProposal(DEFAULT_LOAN_AMOUNT, DEFAULT_LOAN_RATE, DEFAULT_LOAN_DURATION, btc_hash), gas=400_000,)
+        rcpt = self.measure("submitProposal", "valid (amount<=disp, btc ok)", applicant, pool.functions.submitProposal(DEFAULT_LOAN_AMOUNT, DEFAULT_LOAN_RATE, DEFAULT_LOAN_DURATION, btc_hash), gas=400_000,)      # applicant invia proposta di prestito valida, con importo <= totale disponibile e btc sufficiente -> dovrebbe essere approvata
         pid = pool.events.ProposalSubmitted().process_receipt(rcpt, errors=DISCARD)[0]["args"]["proposalId"]
         self.measure("vote", "approve", c0, pool.functions.vote(pid, True), gas=200_000,)
         self.measure("vote", "reject", c1, pool.functions.vote(pid, False), gas=200_000,)
 
-    def run_resolve_approved(self, n, deployer, oracle, oracle_op, contribs, applicants):
-        """resolveProposal Approved with N contributors (drives loop size)."""
-        print(f"\n── Group: resolveProposal Approved (N={n}) ──")
+    def run_resolve_approved(self, n, deployer, oracle, oracle_op, contribs, applicants):   # risoluzione proposta approvata con N contributori che votano sì (impatto numero votanti sul gas di resolveProposal, che non è a costo costante ma cresce linearmente con il numero di votanti approvativi)
+        print(f"\n Group: resolveProposal Approved (N={n})")    
         pool, _ = self.deploy_pool(deployer, oracle.address)
         used = contribs[:n]
         applicant = applicants[0]
@@ -266,27 +265,17 @@ class Bench: # gestisce connessione web3, account di partenza, deploy e interazi
         for c in used:
             self.send(c, pool.functions.deposit(), value=DEPOSIT_WEI, gas=200_000)
         self.seed_btc(oracle, oracle_op, btc_hash, LARGE_BTC_SAT)
-        rcpt = self.send(
-            applicant,
-            pool.functions.submitProposal(
-                DEFAULT_LOAN_AMOUNT, DEFAULT_LOAN_RATE, DEFAULT_LOAN_DURATION, btc_hash
-            ),
-            gas=400_000,
-        )
-        pid = pool.events.ProposalSubmitted().process_receipt(rcpt, errors=DISCARD)[0]["args"][
-            "proposalId"
-        ]
+        rcpt = self.send(applicant, pool.functions.submitProposal(DEFAULT_LOAN_AMOUNT, DEFAULT_LOAN_RATE, DEFAULT_LOAN_DURATION, btc_hash),gas=400_000,)
+
+        pid = pool.events.ProposalSubmitted().process_receipt(rcpt, errors=DISCARD)[0]["args"]["proposalId"]
         for c in used:
             self.send(c, pool.functions.vote(pid, True), gas=200_000)
         self.mine_blocks(VOTING_PERIOD + 1)
 
-        self.measure(
-            "resolveProposal", f"Approved (N={n})", applicant,
-            pool.functions.resolveProposal(pid), gas=6_000_000,
-        )
+        self.measure("resolveProposal", f"Approved (N={n})", applicant, pool.functions.resolveProposal(pid), gas=6_000_000,)
 
-    def run_resolve_rejected_pool_low(self, deployer, oracle, oracle_op, contribs, applicants):
-        print("\n── Group: resolveProposal Rejected (pool low) ──")
+    def run_resolve_rejected_pool_low(self, deployer, oracle, oracle_op, contribs, applicants):     # risoluzione proposta rifiutata per liquidità del pool insufficiente
+        print("\n Group: resolveProposal Rejected (pool low)")
         pool, _ = self.deploy_pool(deployer, oracle.address)
         c0, c1 = contribs[0], contribs[1]
         applicant = applicants[0]
@@ -298,25 +287,13 @@ class Bench: # gestisce connessione web3, account di partenza, deploy e interazi
         self.send(c1, pool.functions.deposit(), value=tiny, gas=200_000)
         self.seed_btc(oracle, oracle_op, btc_hash, LARGE_BTC_SAT)
 
-        rcpt = self.send(
-            applicant,
-            pool.functions.submitProposal(
-                Web3.to_wei("1", "ether"),  # >> pool
-                DEFAULT_LOAN_RATE, DEFAULT_LOAN_DURATION, btc_hash,
-            ),
-            gas=400_000,
-        )
-        pid = pool.events.ProposalSubmitted().process_receipt(rcpt, errors=DISCARD)[0]["args"][
-            "proposalId"
-        ]
+        rcpt = self.send(applicant, pool.functions.submitProposal(Web3.to_wei("1", "ether"), DEFAULT_LOAN_RATE, DEFAULT_LOAN_DURATION, btc_hash,),gas=400_000,)
+        pid = pool.events.ProposalSubmitted().process_receipt(rcpt, errors=DISCARD)[0]["args"]["proposalId"]
         self.mine_blocks(VOTING_PERIOD + 1)
-        self.measure(
-            "resolveProposal", "Rejected (pool low)", applicant,
-            pool.functions.resolveProposal(pid), gas=400_000,
-        )
+        self.measure("resolveProposal", "Rejected (pool low)", applicant, pool.functions.resolveProposal(pid), gas=400_000,)
 
-    def run_resolve_rejected_btc(self, deployer, oracle, oracle_op, contribs, applicants):
-        print("\n── Group: resolveProposal Rejected (btc liquidity) ──")
+    def run_resolve_rejected_btc(self, deployer, oracle, oracle_op, contribs, applicants):  # risoluzione proposta rifiutata per liquidità btc insufficiente
+        print("\n Group: resolveProposal Rejected (btc liquidity)")
         pool, _ = self.deploy_pool(deployer, oracle.address)
         c0, c1 = contribs[0], contribs[1]
         applicant = applicants[0]
@@ -324,176 +301,89 @@ class Bench: # gestisce connessione web3, account di partenza, deploy e interazi
 
         self.send(c0, pool.functions.deposit(), value=DEPOSIT_WEI, gas=200_000)
         self.send(c1, pool.functions.deposit(), value=DEPOSIT_WEI, gas=200_000)
-        # Seed with tiny btc balance → eth-equivalent < loan amount → reject.
         self.seed_btc(oracle, oracle_op, btc_hash, TINY_BTC_SAT)
 
-        rcpt = self.send(
-            applicant,
-            pool.functions.submitProposal(
-                DEFAULT_LOAN_AMOUNT, DEFAULT_LOAN_RATE, DEFAULT_LOAN_DURATION, btc_hash
-            ),
-            gas=400_000,
-        )
-        pid = pool.events.ProposalSubmitted().process_receipt(rcpt, errors=DISCARD)[0]["args"][
-            "proposalId"
-        ]
+        rcpt = self.send(applicant, pool.functions.submitProposal(DEFAULT_LOAN_AMOUNT, DEFAULT_LOAN_RATE, DEFAULT_LOAN_DURATION, btc_hash),gas=400_000,) 
+        pid = pool.events.ProposalSubmitted().process_receipt(rcpt, errors=DISCARD)[0]["args"]["proposalId"]
         self.mine_blocks(VOTING_PERIOD + 1)
-        self.measure(
-            "resolveProposal", "Rejected (btc liquidity)", applicant,
-            pool.functions.resolveProposal(pid), gas=500_000,
-        )
+        self.measure("resolveProposal", "Rejected (btc liquidity)", applicant, pool.functions.resolveProposal(pid), gas=500_000,)
 
-    def run_resolve_rejected_weighted(self, deployer, oracle, oracle_op, contribs, applicants):
-        print("\n── Group: resolveProposal Rejected (weighted vote) ──")
+    def run_resolve_rejected_weighted(self, deployer, oracle, oracle_op, contribs, applicants):     # risoluzione proposta rifiutata per voto ponderato
+        print("\n Group: resolveProposal Rejected (weighted vote)")
         pool, _ = self.deploy_pool(deployer, oracle.address)
         c0, c1, c2 = contribs[0], contribs[1], contribs[2]
         applicant = applicants[0]
         btc_hash = Web3.keccak(text="gas-resolve-weighted")
 
-        # c0 has a tiny stake; c1+c2 have large stakes and abstain → weightedYes
-        # = c0's disposable = far less than half of totalDisposable → rejected.
-        self.send(c0, pool.functions.deposit(), value=MIN_DEPOSIT * 20, gas=200_000)
+        self.send(c0, pool.functions.deposit(), value=MIN_DEPOSIT, gas=200_000)    # deposito più grande per c0 per far sì che il suo voto abbia più peso e determini l'esito della proposta, nonostante il voto contrario di c1 e c2
         self.send(c1, pool.functions.deposit(), value=DEPOSIT_WEI, gas=200_000)
         self.send(c2, pool.functions.deposit(), value=DEPOSIT_WEI, gas=200_000)
         self.seed_btc(oracle, oracle_op, btc_hash, LARGE_BTC_SAT)
 
-        rcpt = self.send(
-            applicant,
-            pool.functions.submitProposal(
-                MIN_DEPOSIT * 5, DEFAULT_LOAN_RATE, DEFAULT_LOAN_DURATION, btc_hash
-            ),
-            gas=400_000,
-        )
-        pid = pool.events.ProposalSubmitted().process_receipt(rcpt, errors=DISCARD)[0]["args"][
-            "proposalId"
-        ]
+        rcpt = self.send(applicant, pool.functions.submitProposal(MIN_DEPOSIT * 5, DEFAULT_LOAN_RATE, DEFAULT_LOAN_DURATION, btc_hash),gas=400_000,)
+        pid = pool.events.ProposalSubmitted().process_receipt(rcpt, errors=DISCARD)[0]["args"]["proposalId"]
         self.send(c0, pool.functions.vote(pid, True), gas=200_000)
         self.mine_blocks(VOTING_PERIOD + 1)
-        self.measure(
-            "resolveProposal", "Rejected (weighted vote)", applicant,
-            pool.functions.resolveProposal(pid), gas=500_000,
-        )
+        self.measure("resolveProposal", "Rejected (weighted vote)", applicant, pool.functions.resolveProposal(pid), gas=500_000,)
 
-    def run_repay_scenarios(self, deployer, oracle, oracle_op, contribs, applicants):
-        """partialRepay mid, close (Successful), overpay — two loans on one pool."""
-        print("\n── Group: partialRepay (mid / close / overpay) ──")
+    def run_repay_scenarios(self, deployer, oracle, oracle_op, contribs, applicants):   # scenari di rimborso parziale (mid, close, overpay) per misurare il gas usato da partialRepay in situazioni diverse
+        print("\n Group: partialRepay (mid / close / overpay) ")
         pool, _ = self.deploy_pool(deployer, oracle.address)
-        used = contribs[:2]
+        used = contribs[:2]     # primi 2 account contributor per finanziare i prestiti, non serve più di 2 per questi scenari di rimborso perché il gas di partialRepay non dipende dal numero di contributori o votanti
         applicant = applicants[0]
         applicant2 = applicants[1]
 
-        # Loan 1 — mid + close
-        loan1 = self.build_loan(
-            pool, oracle, oracle_op, used, applicant,
-            Web3.keccak(text="gas-repay-1"), DEFAULT_LOAN_AMOUNT,
-        )
+        # mid + close
+        loan1 = self.build_loan(pool, oracle, oracle_op, used, applicant, Web3.keccak(text="gas-repay-1"), DEFAULT_LOAN_AMOUNT,)
         remaining = loan1.functions.remainingLoanAmount().call()
-        mid_value = remaining // 2
-        self.measure(
-            "partialRepay", "mid (no overpay)", applicant,
-            loan1.functions.partialRepay(), value=mid_value, gas=800_000,
-        )
-        remaining2 = loan1.functions.remainingLoanAmount().call()
+        mid_value = remaining // 2  # rimborsa metà del prestito per misurare il gas di partialRepay in uno scenario di rimborso parziale "mid", senza chiudere il prestito
+        self.measure("partialRepay", "mid (no overpay)", applicant, loan1.functions.partialRepay(), value=mid_value, gas=800_000,)
+        remaining2 = loan1.functions.remainingLoanAmount().call()   # rimborsa il resto del prestito per misurare il gas di partialRepay in uno scenario di rimborso parziale "close", dove si chiude il prestito senza pagare interessi extra
         interest = (remaining2 * DEFAULT_LOAN_RATE) // 100
-        self.measure(
-            "partialRepay", "close Successful", applicant,
-            loan1.functions.partialRepay(),
-            value=remaining2 + interest, gas=1_500_000,
-        )
+        self.measure("partialRepay", "close Successful", applicant, loan1.functions.partialRepay(), value=remaining2 + interest, gas=1_500_000,)
 
-        # Loan 2 — overpay closes in a single call
-        loan2 = self.build_loan(
-            pool, oracle, oracle_op, used, applicant2,
-            Web3.keccak(text="gas-repay-2"), DEFAULT_LOAN_AMOUNT,
-        )
+        # overpay
+        loan2 = self.build_loan(pool, oracle, oracle_op, used, applicant2,Web3.keccak(text="gas-repay-2"), DEFAULT_LOAN_AMOUNT,)
         remaining = loan2.functions.remainingLoanAmount().call()
         interest = (remaining * DEFAULT_LOAN_RATE) // 100
         overpay = remaining + interest + Web3.to_wei("0.1", "ether")
-        self.measure(
-            "partialRepay", "overpay (extra interest)", applicant2,
-            loan2.functions.partialRepay(), value=overpay, gas=1_500_000,
-        )
+        self.measure("partialRepay", "overpay (extra interest)", applicant2, loan2.functions.partialRepay(), value=overpay, gas=1_500_000,)
 
-    def run_compensation_and_failed_repay(self, deployer, oracle, oracle_op,
-                                          contribs, applicants):
-        """requestCompensation first, subsequent (after refill), partialRepay on Failed."""
-        print("\n── Group: compensation (first / subsequent) + failed-loan repay ──")
+    def run_compensation_and_failed_repay(self, deployer, oracle, oracle_op, contribs, applicants):     # scenari di richiesta di compensazione per prestito fallito e rimborso parziale su prestito fallito, per misurare il gas di requestCompensation
+        print("\n Group: compensation (first / subsequent) + failed-loan repay ")
         pool, _ = self.deploy_pool(deployer, oracle.address)
-        # Sort contribs by address ASC so we know which one wins the waterfall
-        # tie-break in LoanContract (equal initialLocked → ASC by address).
-        used = sorted(contribs[:2], key=lambda c: int(c.address, 16))
-        claimer = used[0]            # the one repaid first in waterfall
-        applicant = applicants[0]    # owner of the loan that will Fail
-        applicant2 = applicants[1]   # owner of the loans that fund the comp pool
+        used = sorted(contribs[:2], key=lambda c: int(c.address, 16))       # ordina i contributor per indirizzo , in modo che il contributor con indirizzo più basso sia il primo a ricevere la compensazione in caso di prestito fallito
+        claimer = used[0]            # contributor che richiede compensazione
+        applicant = applicants[0]    # applicant del prestito che fallisce e per cui si richiede compensazione
+        applicant2 = applicants[1]   # applicant per i prestiti che servono a rifillare il pool di comp dopo prima richiesta di compensazione
 
-        # Step 1 — seed comp pool via a Successful loan (loan_seed1).
-        loan_seed1 = self.build_loan(
-            pool, oracle, oracle_op, used, applicant2,
-            Web3.keccak(text="gas-comp-seed1"), DEFAULT_LOAN_AMOUNT,
-        )
+        loan_seed1 = self.build_loan(pool, oracle, oracle_op, used, applicant2, Web3.keccak(text="gas-comp-seed1"), DEFAULT_LOAN_AMOUNT,)   # primo prestito di successo che serve a rifillare il pool di compensazione dopo la prima richiesta di compensazione, che dovrebbe esaurire il pool e far sì che la seconda richiesta di compensazione segua la path di forfeit proporzionale invece di quella di payout completo
         rem = loan_seed1.functions.remainingLoanAmount().call()
         interest = (rem * DEFAULT_LOAN_RATE) // 100
-        self.send(
-            applicant2, loan_seed1.functions.partialRepay(),
-            value=rem + interest, gas=1_500_000,
-        )
+        self.send(applicant2, loan_seed1.functions.partialRepay(), value=rem + interest, gas=1_500_000,)    # rimborsa completamente il primo prestito di successo per rifillare pool compensazione
 
-        # Step 2 — loan_fail by applicant; expire it without repayment.
-        loan_fail = self.build_loan(
-            pool, oracle, oracle_op, used, applicant,
-            Web3.keccak(text="gas-comp-fail"), DEFAULT_LOAN_AMOUNT,
-            duration=10,
-        )
+        loan_fail = self.build_loan(pool, oracle, oracle_op, used, applicant, Web3.keccak(text="gas-comp-fail"), DEFAULT_LOAN_AMOUNT, duration=10,) # secondo prestito che fallisce perché non viene rimborsato entro la scadenza, per testare requestCompensation su prestito fallito;
         self.mine_blocks(15)  # past expiry
 
-        # Op: requestCompensation first call — marks Failed, bumps collateral.
-        self.measure(
-            "requestCompensation", "first call (marks Failed)", claimer,
-            loan_fail.functions.requestCompensation(), gas=600_000,
-        )
+        self.measure("requestCompensation", "first call (marks Failed)", claimer,loan_fail.functions.requestCompensation(), gas=600_000,)   # prima richiesta di comp 
 
-        # Step 3 — refill comp pool via another Successful loan.
-        loan_seed2 = self.build_loan(
-            pool, oracle, oracle_op, used, applicant2,
-            Web3.keccak(text="gas-comp-seed2"), DEFAULT_LOAN_AMOUNT,
-            duration=30,
-        )
+        loan_seed2 = self.build_loan(pool, oracle, oracle_op, used, applicant2, Web3.keccak(text="gas-comp-seed2"), DEFAULT_LOAN_AMOUNT, duration=30,)   # secondo prestito di successo che serve a rifillare il pool di compensazione dopo la prima richiesta di compensazione
         rem = loan_seed2.functions.remainingLoanAmount().call()
         interest = (rem * DEFAULT_LOAN_RATE) // 100
-        self.send(
-            applicant2, loan_seed2.functions.partialRepay(),
-            value=rem + interest, gas=1_500_000,
-        )
+        self.send(applicant2, loan_seed2.functions.partialRepay(), value=rem + interest, gas=1_500_000,)
 
-        # Op: requestCompensation subsequent — comp pool has refilled.
-        self.measure(
-            "requestCompensation", "subsequent (refill claim)", claimer,
-            loan_fail.functions.requestCompensation(), gas=600_000,
-        )
+        self.measure("requestCompensation", "subsequent (refill claim)", claimer, loan_fail.functions.requestCompensation(), gas=600_000,)  # seconda richiesta di comp
 
-        # Op: partialRepay on Failed loan — exercises proportional forfeit
-        # path because claimer has alreadyCompensated > 0 and is first in
-        # waterfall order.
-        self.measure(
-            "partialRepay", "on Failed loan (proportional split)", applicant,
-            loan_fail.functions.partialRepay(),
-            value=Web3.to_wei("0.05", "ether"), gas=1_500_000,
-        )
+        self.measure("partialRepay", "on Failed loan (proportional split)", applicant, loan_fail.functions.partialRepay(), value=Web3.to_wei("0.05", "ether"), gas=1_500_000,)  # rimborso parziale su prestito fallito
 
-    def run_upgrade(self, deployer, oracle):
-        print("\n── Group: UUPS upgradeToAndCall ──")
+    def run_upgrade(self, deployer, oracle):    # test upgrade UUPS per misurare il gas di upgradeToAndCall
+        print("\n Group: UUPS upgradeToAndCall ")
         pool, _ = self.deploy_pool(deployer, oracle.address)
-        # Same bytecode is a valid UUPS target — `proxiableUUID` returns the
-        # ERC-1967 implementation slot; we just want to measure the swap op.
+
         v2_addr = self.deploy_pool_impl(deployer)
-        self.measure(
-            "upgradeToAndCall", "UUPS v2 swap", deployer,
-            pool.functions.upgradeToAndCall(v2_addr, b""), gas=200_000,
-        )
+        self.measure("upgradeToAndCall", "UUPS v2 swap", deployer, pool.functions.upgradeToAndCall(v2_addr, b""), gas=200_000,)
 
-
-# ── Output ───────────────────────────────────────────────────────────────────
-
+# output
 
 def write_csv(rows: List[GasRow], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -501,22 +391,16 @@ def write_csv(rows: List[GasRow], path: Path) -> None:
         wr = csv.writer(f)
         wr.writerow(["op_name", "scenario", "gas_used", "cost_eth"])
         for r in rows:
-            wr.writerow([
-                r.op_name, r.scenario, r.gas_used,
-                f"{r.cost_eth:.12f}",
-            ])
+            wr.writerow([r.op_name, r.scenario, r.gas_used, f"{r.cost_eth:.12f}",])
 
 
 def print_table(rows: List[GasRow]) -> None:
-    print("\n── Gas measurement table ──")
+    print("\n Gas measurement table ")
     header = f"{'op_name':<22}{'scenario':<40}{'gas_used':>12}{'cost_eth':>20}"
     print(header)
     print("─" * len(header))
     for r in rows:
-        print(
-            f"{r.op_name:<22}{r.scenario:<40}{r.gas_used:>12,}"
-            f"{r.cost_eth:>20.12f}"
-        )
+        print(f"{r.op_name:<22}{r.scenario:<40}{r.gas_used:>12,}"f"{r.cost_eth:>20.12f}")
 
 
 def print_summary(rows: List[GasRow]) -> None:
@@ -526,23 +410,16 @@ def print_summary(rows: List[GasRow]) -> None:
     most = max(rows, key=lambda r: r.gas_used)
     least = min(rows, key=lambda r: r.gas_used)
     total_cost = sum(r.cost_eth for r in rows)
-    prices = {round(r.gas_price_gwei, 6) for r in rows}  # su chain Clique il gasPrice è fisso → 1 solo valore
+    prices = {round(r.gas_price_gwei, 6) for r in rows}  # su chain Clique il gasPrice è fisso -> 1 solo valore
     gp_note = (f"{next(iter(prices)):.4f} gwei (constant)" if len(prices) == 1
                else f"{min(prices):.4f}–{max(prices):.4f} gwei (variable)")
-    print("\n── Headline summary ──")
+    print("\n Headline summary ")
     print(f"  rows recorded     : {len(rows)}")
     print(f"  gas price         : {gp_note}")
     print(f"  total gas         : {total:,}")
     print(f"  total cost        : {total_cost:.10f} ETH")
-    print(
-        f"  most expensive    : {most.op_name} [{most.scenario}] = {most.gas_used:,} gas"
-    )
-    print(
-        f"  least expensive   : {least.op_name} [{least.scenario}] = {least.gas_used:,} gas"
-    )
-
-
-# ── Main ─────────────────────────────────────────────────────────────────────
+    print(f"  most expensive    : {most.op_name} [{most.scenario}] = {most.gas_used:,} gas")
+    print(f"  least expensive   : {least.op_name} [{least.scenario}] = {least.gas_used:,} gas")
 
 
 def main() -> int:
@@ -551,13 +428,9 @@ def main() -> int:
     if not w3.is_connected():
         sys.exit(f"ERROR: cannot connect to {RPC_URL}")
     if w3.eth.chain_id != CHAIN_ID:
-        sys.exit(
-            f"ERROR: chainId mismatch — node={w3.eth.chain_id}, expected={CHAIN_ID}"
-        )
+        sys.exit(f"ERROR: chainId mismatch — node={w3.eth.chain_id}, expected={CHAIN_ID}")
     print(f"connected. chainId={CHAIN_ID}  block={w3.eth.block_number}")
 
-    # Genesis sealer (only allowed use per spec §1.5: transfer value to fund
-    # fresh accounts that will then deploy / call contracts on our behalf).
     if not PASSWORD_FILE.exists():
         sys.exit(f"ERROR: password file missing: {PASSWORD_FILE}")
     if not KEYSTORE_PATH.exists():
@@ -568,21 +441,11 @@ def main() -> int:
     genesis_addr = Account.from_key(genesis_key).address
     print(f"genesis sealer: {genesis_addr}")
 
-    artifacts = {
-        "oracle": load_artifact(ORACLE_ARTIFACT),
-        "pool": load_artifact(POOL_ARTIFACT),
-        "proxy": load_artifact(PROXY_ARTIFACT),
-        "loan": load_artifact(LOAN_ARTIFACT),
-    }
+    artifacts = {"oracle": load_artifact(ORACLE_ARTIFACT), "pool": load_artifact(POOL_ARTIFACT), "proxy": load_artifact(PROXY_ARTIFACT), "loan": load_artifact(LOAN_ARTIFACT),}
 
     bench = Bench(w3, genesis_key, genesis_addr, artifacts)
 
-    # Worker accounts (reused across scenarios — per-pool state is fresh
-    # because each scenario group deploys its own LendingPool).
-    print(
-        f"\n── Funding worker accounts "
-        f"(contribs={MAX_CONTRIBS_NEEDED}, applicants={N_APPLICANTS}) ──"
-    )
+    print(f"\n Funding worker accounts "f"(contribs={MAX_CONTRIBS_NEEDED}, applicants={N_APPLICANTS}) ")
     deployer = bench.new_account(FUND_DEPLOYER)
     oracle_op = bench.new_account(FUND_ORACLE_OP)
     contribs = [bench.new_account(FUND_CONTRIBUTOR) for _ in range(MAX_CONTRIBS_NEEDED)]
@@ -590,11 +453,11 @@ def main() -> int:
     print(f"  deployer:  {deployer.address}")
     print(f"  oracle_op: {oracle_op.address}")
 
-    print("\n── Deploying shared BitcoinOracle ──")
+    print("\n Deploying shared BitcoinOracle ")
     oracle = bench.deploy_oracle(oracle_op)
     print(f"  oracle: {oracle.address}  operator={oracle_op.address}")
 
-    # ── Run scenarios ────────────────────────────────────────────────────────
+    # run scenarios 
     bench.run_simple_ops(deployer, oracle, oracle_op, contribs, applicants)
     bench.run_propose_vote(deployer, oracle, oracle_op, contribs, applicants)
     for n in CONTRIB_N_VARIANTS:
@@ -606,19 +469,16 @@ def main() -> int:
     bench.run_resolve_rejected_btc(deployer, oracle, oracle_op, contribs, applicants)
     bench.run_resolve_rejected_weighted(deployer, oracle, oracle_op, contribs, applicants)
     bench.run_repay_scenarios(deployer, oracle, oracle_op, contribs, applicants)
-    bench.run_compensation_and_failed_repay(
-        deployer, oracle, oracle_op, contribs, applicants
-    )
+    bench.run_compensation_and_failed_repay(deployer, oracle, oracle_op, contribs, applicants)
     bench.run_upgrade(deployer, oracle)
 
-    # ── Output ──────────────────────────────────────────────────────────────
+    #  output 
     write_csv(bench.rows, REPORT_CSV)
     print(f"\nWrote CSV: {REPORT_CSV}")
     print_table(bench.rows)
     print_summary(bench.rows)
 
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())
