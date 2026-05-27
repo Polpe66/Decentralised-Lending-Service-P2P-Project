@@ -43,7 +43,8 @@ describe("LendingPool", function () {
         });
 
         it("reverts on second initialize", async function () {
-            await expect(pool.initialize(mockOracle.target)).to.be.reverted;
+            await expect(pool.initialize(mockOracle.target))
+                .to.be.revertedWithCustomError(pool, "InvalidInitialization");
         });
     });
 
@@ -98,12 +99,6 @@ describe("LendingPool", function () {
                 pool.connect(contributor1).deposit({ value: ONE_ETH })
             ).to.changeEtherBalance(pool, ONE_ETH);
         });
-
-        it("gas cost", async function () {
-            const tx = await pool.connect(contributor1).deposit({ value: ONE_ETH });
-            const receipt = await tx.wait();
-            console.log(`\n    Gas deposit(): ${receipt.gasUsed}`);
-        });
     });
 
     // ── withdraw() ────────────────────────────────────────────────────────────
@@ -146,15 +141,9 @@ describe("LendingPool", function () {
                 .to.be.revertedWith("Insufficient disposable");
         });
 
-        it("reverts for non-contributor", async function () {
+        it("reverts for account with no disposable (non-contributor)", async function () {
             await expect(pool.connect(stranger).withdraw(MIN_DEPOSIT))
                 .to.be.revertedWith("Insufficient disposable");
-        });
-
-        it("gas cost", async function () {
-            const tx = await pool.connect(contributor1).withdraw(ONE_ETH);
-            const receipt = await tx.wait();
-            console.log(`\n    Gas withdraw(): ${receipt.gasUsed}`);
         });
     });
 
@@ -179,6 +168,41 @@ describe("LendingPool", function () {
         });
     });
 
+    // ── requestOracleUpdate() ─────────────────────────────────────────────────
+
+    describe("requestOracleUpdate()", function () {
+        const BTC_HASH = ethers.id("btc-addr-1");
+
+        it("reverts when fee below MIN_ORACLE_FEE", async function () {
+            const fee = await mockOracle.MIN_ORACLE_FEE();
+            await expect(
+                pool.connect(contributor1).requestOracleUpdate(BTC_HASH, { value: fee - 1n })
+            ).to.be.revertedWith("Fee too low");
+        });
+
+        it("accepts exactly MIN_ORACLE_FEE", async function () {
+            const fee = await mockOracle.MIN_ORACLE_FEE();
+            await expect(
+                pool.connect(contributor1).requestOracleUpdate(BTC_HASH, { value: fee })
+            ).to.not.be.reverted;
+        });
+
+        it("forwards the full msg.value to the oracle (exact fee)", async function () {
+            const fee = await mockOracle.MIN_ORACLE_FEE();
+            await expect(
+                pool.connect(contributor1).requestOracleUpdate(BTC_HASH, { value: fee })
+            ).to.changeEtherBalance(mockOracle, fee);
+        });
+
+        it("forwards msg.value above the minimum, not just the fee", async function () {
+            const fee = await mockOracle.MIN_ORACLE_FEE();
+            const sent = fee + ethers.parseEther("0.01");
+            await expect(
+                pool.connect(contributor1).requestOracleUpdate(BTC_HASH, { value: sent })
+            ).to.changeEtherBalance(mockOracle, sent);
+        });
+    });
+
     // ── onlyActiveLoan access control ─────────────────────────────────────────
 
     describe("onlyActiveLoan", function () {
@@ -197,6 +221,36 @@ describe("LendingPool", function () {
                 pool.connect(stranger).decreaseCollateral()
             ).to.be.revertedWith("Not a registered loan");
         });
+
+        it("repayLockedValue reverts from non-loan", async function () {
+            await expect(
+                pool.connect(stranger).repayLockedValue(contributor1.address, 1n, { value: 1n })
+            ).to.be.revertedWith("Not a registered loan");
+        });
+
+        it("creditInterest reverts from non-loan", async function () {
+            await expect(
+                pool.connect(stranger).creditInterest(contributor1.address, { value: 1n })
+            ).to.be.revertedWith("Not a registered loan");
+        });
+
+        it("addToCompensationPool reverts from non-loan", async function () {
+            await expect(
+                pool.connect(stranger).addToCompensationPool({ value: 1n })
+            ).to.be.revertedWith("Not a registered loan");
+        });
+
+        it("compensateFromPool reverts from non-loan", async function () {
+            await expect(
+                pool.connect(stranger).compensateFromPool(contributor1.address, 1n)
+            ).to.be.revertedWith("Not a registered loan");
+        });
+
+        it("markLoanClosed reverts from non-loan", async function () {
+            await expect(
+                pool.connect(stranger).markLoanClosed()
+            ).to.be.revertedWith("Not a registered loan");
+        });
     });
 
     // ── UUPS upgrade ──────────────────────────────────────────────────────────
@@ -206,7 +260,8 @@ describe("LendingPool", function () {
             const LendingPool = await ethers.getContractFactory("LendingPool", stranger);
             await expect(
                 upgrades.upgradeProxy(pool.target, LendingPool, { kind: "uups" })
-            ).to.be.reverted;
+            ).to.be.revertedWithCustomError(pool, "OwnableUnauthorizedAccount")
+                .withArgs(stranger.address);
         });
 
         it("owner can upgrade to same implementation", async function () {
@@ -222,6 +277,25 @@ describe("LendingPool", function () {
             const upgraded = await upgrades.upgradeProxy(pool.target, LendingPool, { kind: "uups" });
             expect(await upgraded.deposits(contributor1.address)).to.equal(ONE_ETH);
             expect(await upgraded.totalFundingPool()).to.equal(ONE_ETH);
+        });
+    });
+
+    // ── receive() ─────────────────────────────────────────────────────────────
+
+    describe("receive()", function () {
+        it("accepts a plain ETH transfer", async function () {
+            const amount = ethers.parseEther("1");
+            await expect(
+                owner.sendTransaction({ to: pool.target, value: amount })
+            ).to.changeEtherBalance(pool, amount);
+        });
+
+        it("plain transfer does not credit deposits / totalFundingPool", async function () {
+            const amount = ethers.parseEther("1");
+            await owner.sendTransaction({ to: pool.target, value: amount });
+            expect(await pool.deposits(owner.address)).to.equal(0n);
+            expect(await pool.totalFundingPool()).to.equal(0n);
+            expect(await pool.isContributor(owner.address)).to.be.false;
         });
     });
 });
