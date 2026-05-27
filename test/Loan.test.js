@@ -354,7 +354,7 @@ describe("LoanContract", function () {
             const loanA = LoanFactory.attach(logA.args[1]);
             await loanA.connect(applicant).partialRepay({ value: (ONE_ETH * 31n) / 10n });
 
-            await pool.connect(applicant).submitProposal(ONE_ETH * 5n, RATE, DURATION, BTC);            // Loan B: 5 ETH capitale, 0.5 interesse atteso. Collateral pct = 45 (50 + 5 da loan A). Dopo la scadenza, c1 owed = 3 ETH, c2 owed = 2 ETH.
+            await pool.connect(applicant).submitProposal(ONE_ETH * 5n, RATE, DURATION, BTC);            // Loan B: 5 ETH capitale, 0.5 interesse atteso. Collateral pct = 45. Dopo la scadenza, c1 owed = 3 ETH, c2 owed = 2 ETH.
             await pool.connect(c1).vote(1n, true);
             await pool.connect(c2).vote(1n, true);
             await mine(15);
@@ -572,7 +572,7 @@ describe("LoanContract", function () {
         it("multi-installment repay after comp claim does not underflow lockedValue", async function () {       // verifica che se viene chiamata la funzione requestCompensation da un contributore dopo la scadenza del prestito, e il contributore riceve solo una parte dell'importo di compensazione che dovrebbe ricevere a causa di una compensation pool insufficiente,
                                                                                                                 //  ma successivamente viene effettuato un pagamento parziale che include una parte di compensazione e rifilla la compensation pool, e poi vengono effettuati ulteriori pagamenti parziali che coprono interamente l'importo residuo del prestito più gli interessi,
 
-            const [, , , , , , app2, d1, d2] = await ethers.getSigners();                                       // setup: loan da 1M, d1=600k, d2=400k. Dopo scadenza, c1 owed=600k, c2 owed=400k.
+            const [, , , , , , app2, d1, d2] = await ethers.getSigners();                                       
 
             const D1 = 600_000n;
             const D2 = 400_000n;
@@ -587,7 +587,7 @@ describe("LoanContract", function () {
             const loan0Addr = r0.logs.find((l) => l.fragment && l.fragment.name === "ProposalApproved").args[1];
             const loan0 = LoanFactory.attach(loan0Addr);
 
-            await loan0.connect(app2).partialRepay({ value: L * 2n });                                              // applicant ripaga tutto il residuo + excess. Loan0 -> Successful. Comp pool +100k. Collateral pct resta 50 (no bump, loan successful).
+            await loan0.connect(app2).partialRepay({ value: L * 2n });                                              // applicant ripaga tutto il residuo + excess. Loan0 -> Successful. Collateral pct resta 50 (no bump, loan successful).
             await pool.connect(app2).submitProposal(L, RATE, DURATION, BTC);
             await pool.connect(d1).vote(1n, true);
             await pool.connect(d2).vote(1n, true);
@@ -597,7 +597,7 @@ describe("LoanContract", function () {
             const loanB = LoanFactory.attach(loanBAddr);
 
             await mine(Number(DURATION) + 1);
-            await loanB.connect(d1).requestCompensation();                                                             // d1 claims compensation. LoanB -> Failed. Collateral pct = 55. c1 alreadyCompensated=600k, compRecovered=0, unlockedSoFar=0.
+            await loanB.connect(d1).requestCompensation();                                                             // d1 claims compensation. LoanB -> Failed. Collateral pct = 50
             const ac1 = await loanB.alreadyCompensated(d1.address);
             expect(ac1).to.be.gt(0n);
 
