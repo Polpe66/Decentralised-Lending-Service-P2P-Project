@@ -14,7 +14,7 @@ describe("BitcoinOracle - MIN_ORACLE_FEE formula", function () {
     });
 
     it("hardcoded MIN_ORACLE_FEE matches measured gas × 0.1 gwei", async function () {                  // verifica che la costante MIN_ORACLE_FEE definita nel contratto corrisponda al costo in gas misurato per una chiamata alla funzione update() moltiplicato per 0.1 gwei
-        const freshHash = await oracle.hashBtcAddress("bc1qworstcase00000000000000000000000000000");
+        const freshHash = await oracle.hashBtcAddress("bc1qworstcase00000000000000000000000000000");    // hash arbitrario per test, non influisce sul gas usato
         const satoshiBalance = 12345n;                                                                  // valore arbitrario per test, non influisce sul gas usato
 
         const tx = await oracle.connect(operator).update(freshHash, satoshiBalance);                    // chiamata alla funzione update() per misurare il gas usato
