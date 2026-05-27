@@ -145,16 +145,10 @@ describe("LoanContract", function () {
         });
     });
 
-    // ── Base distribution (no interest) ───────────────────────────────────────
-
-    describe("base distribution — no interest", function () {
+    describe("base distribution - no interest", function () {                                      // test per verificare che quando viene effettuato un pagamento parziale senza interessi, l'importo pagato venga distribuito correttamente tra i contributori secondo l'ordine della waterfall
         it("clean division: distributes shares exactly, no leftover", async function () {
             const loan = await setupLoan6_4_5();
-            // 5 capitale + 0.5 interesse. Base waterfall satura c1(3)+c2(2);
-            // interesse loop satura c1(0.3)+c2(0.2). Loan chiude Successful.
-            await loan
-                .connect(applicant)
-                .partialRepay({ value: (ONE_ETH * 55n) / 10n });
+            await loan.connect(applicant).partialRepay({ value: (ONE_ETH * 55n) / 10n });
             expect(await loan.remainingLoanAmount()).to.equal(0n);
             expect(await loan.remainingInterest()).to.equal(0n);
             expect(await loan.status()).to.equal(2n); // Successful
@@ -163,72 +157,52 @@ describe("LoanContract", function () {
             expect(await pool.totalLocked()).to.equal(0n);
         });
 
-        it("partial: waterfall saturates c1 first, c2 untouched", async function () {
+        it("partial: waterfall saturates c1 first, c2 untouched", async function () {           // verifica che quando viene effettuato un pagamento parziale che non copre l'intero importo del prestito, la distribuzione segue l'ordine della waterfall
             const loan = await setupLoan6_4_5();
-            // Repay 2.5 ETH (half). Waterfall: c1 capacity=3, take=2.5; c2 take=0.
             const half = ONE_ETH * 25n / 10n;
             await loan.connect(applicant).partialRepay({ value: half });
             expect(await loan.remainingLoanAmount()).to.equal(
                 ONE_ETH * 5n - half
             );
-            // lockedValue after: c1 = 3 - 2.5 = 0.5, c2 = 2 - 0 = 2
             expect(await pool.lockedValue(c1.address)).to.equal(
                 ONE_ETH * 3n - half
             );
             expect(await pool.lockedValue(c2.address)).to.equal(ONE_ETH * 2n);
-            // unlockedSoFar reflects waterfall order
             expect(await loan.unlockedSoFar(c1.address)).to.equal(half);
             expect(await loan.unlockedSoFar(c2.address)).to.equal(0n);
-            // Still Active
             expect(await loan.status()).to.equal(0n);
         });
 
-        it("preserves DESC order of contributors", async function () {
+        it("preserves DESC order of contributors", async function () {                          // verifica che dopo un pagamento parziale, l'ordine dei contributori rimanga decrescente in base alla quantità di ETH inizialmente bloccata, e che la funzione unlockedSoFar tenga traccia correttamente dell'importo sbloccato per ciascun contributore
             const loan = await setupLoan6_4_5();
-            // Already verified via constructor test; here verify unlockedSoFar tracks per addr
-            await loan
-                .connect(applicant)
-                .partialRepay({ value: (ONE_ETH * 55n) / 10n });
+            await loan.connect(applicant).partialRepay({ value: (ONE_ETH * 55n) / 10n });
             expect(await loan.unlockedSoFar(c1.address)).to.equal(ONE_ETH * 3n);
             expect(await loan.unlockedSoFar(c2.address)).to.equal(ONE_ETH * 2n);
         });
     });
 
-    // ── Interest split ────────────────────────────────────────────────────────
+    // Interest split
 
-    describe("interest split — gain + collateral", function () {
+    describe("interest split — gain + collateral", function () {                                // test per verificare che quando viene effettuato un pagamento parziale che include interessi, la parte di interesse venga distribuita correttamente tra i contributori come guadagno diretto
         it("collateral = interest * pct / 100 → compensationPool", async function () {
             const loan = await setupLoan6_4_5();
-            // pct=50, RATE=10, loan=5 -> expectedInterest=0.5, capped.
-            // Pay 5 base + 1 afterBase: interest=0.5 (cap), excess=0.5.
-            // Per-contributor: c1 take=0.3 (coll=0.15, gain=0.15);
-            //                  c2 take=0.2 (coll=0.10, gain=0.10).
-            // collateral totale = 0.25. excess 0.5 -> comp.
-            // Tot comp delta = 0.25 + 0.5 = 0.75 ETH.
             const compBefore = await pool.compensationPool();
-            await loan
-                .connect(applicant)
-                .partialRepay({ value: ONE_ETH * 6n });
+            await loan.connect(applicant).partialRepay({ value: ONE_ETH * 6n });
             const compAfter = await pool.compensationPool();
             expect(compAfter - compBefore).to.equal((ONE_ETH * 75n) / 100n);
         });
 
-        it("gain credited directly to contributors (NOT to deposits)", async function () {
+        it("gain credited directly to contributors (NOT to deposits)", async function () {      // verifica che la parte di interesse che spetta ai contributori venga accreditata direttamente sui loro saldi ETH e non come aumento dei loro depositi, in modo che i contributori possano prelevare immediatamente il guadagno senza dover prima ritirare i fondi dal pool
             const loan = await setupLoan6_4_5();
             const depC1Before = await pool.deposits(c1.address);
             const depC2Before = await pool.deposits(c2.address);
             const balC1Before = await ethers.provider.getBalance(c1.address);
             const balC2Before = await ethers.provider.getBalance(c2.address);
-            // Pay 5 base + 1 afterBase. Interest cap = expectedInterest = 0.5.
-            // c1: take=0.3 -> coll=0.15 (comp), gain=0.15 (wallet).
-            // c2: take=0.2 -> coll=0.10 (comp), gain=0.10 (wallet).
-            await loan
-                .connect(applicant)
-                .partialRepay({ value: ONE_ETH * 6n });
-            // deposits unchanged
+            await loan.connect(applicant).partialRepay({ value: ONE_ETH * 6n });
+
             expect(await pool.deposits(c1.address)).to.equal(depC1Before);
             expect(await pool.deposits(c2.address)).to.equal(depC2Before);
-            // ETH balances increased by gain share
+
             const balC1After = await ethers.provider.getBalance(c1.address);
             const balC2After = await ethers.provider.getBalance(c2.address);
             expect(balC1After - balC1Before).to.equal((ONE_ETH * 15n) / 100n);
@@ -236,43 +210,40 @@ describe("LoanContract", function () {
         });
     });
 
-    // ── Close flow on full repay ──────────────────────────────────────────────
+    // chiusura
 
-    describe("close on full repayment", function () {
-        // Successful richiede capitale (5) + interesse atteso (0.5) = 5.5 ETH.
+    describe("close on full repayment", function () {                                       // test per verificare che quando viene effettuato un pagamento parziale che copre l'intero importo del prestito più gli interessi, il prestito venga chiuso con stato Successful
         const FULL = (ONE_ETH * 55n) / 10n;
 
-        it("status → Successful", async function () {
+        it("status -> Successful", async function () {                                      // verifica che dopo un pagamento parziale che copre l'intero importo del prestito più gli interessi, lo stato del prestito venga aggiornato a Successful
             const loan = await setupLoan6_4_5();
             await loan.connect(applicant).partialRepay({ value: FULL });
             expect(await loan.status()).to.equal(2n);
         });
 
-        it("calls decreaseCollateral on LendingPool", async function () {
+        it("calls decreaseCollateral on LendingPool", async function () {                   // verifica che quando viene effettuato un pagamento parziale che chiude il prestito, venga chiamata la funzione decreaseCollateral del contratto LendingPool per sbloccare il collaterale bloccato per quel prestito
             const loan = await setupLoan6_4_5();
             const pctBefore = await pool.collateralPercentage();
             await loan.connect(applicant).partialRepay({ value: FULL });
             expect(await pool.collateralPercentage()).to.equal(pctBefore - 5n);
         });
 
-        it("deregisters loan (markLoanClosed)", async function () {
+        it("deregisters loan (markLoanClosed)", async function () {                         // verifica che quando viene effettuato un pagamento parziale che chiude il prestito, il contratto LoanContract venga deregistrato come prestito attivo all'interno del contratto LendingPool
             const loan = await setupLoan6_4_5();
             expect(await pool.isActiveLoan(loan.target)).to.be.true;
             await loan.connect(applicant).partialRepay({ value: FULL });
             expect(await pool.isActiveLoan(loan.target)).to.be.false;
         });
 
-        it("emits LoanClosed", async function () {
+        it("emits LoanClosed", async function () {                              
             const loan = await setupLoan6_4_5();
             await expect(
                 loan.connect(applicant).partialRepay({ value: FULL })
             ).to.emit(loan, "LoanClosed");
         });
 
-        it("emits Repayment with remaining=0", async function () {
+        it("emits Repayment with remaining=0", async function () {                      // verifica che quando viene effettuato un pagamento parziale che chiude il prestito, venga emesso un evento Repayment con il parametro remaining impostato a 0, indicando che non c'è più importo residuo da pagare
             const loan = await setupLoan6_4_5();
-            // Event: (base, interestPaid, excess, toCompensation, remainingBase, remainingInterest)
-            // FULL=5.5: base=5, interestPaid=0.5, excess=0, toComp=0.25 (somma coll per-contributor).
             await expect(
                 loan.connect(applicant).partialRepay({ value: FULL })
             )
@@ -288,97 +259,69 @@ describe("LoanContract", function () {
         });
     });
 
-    // ── Critical: solvency invariant (verifies baseLeftover fix) ──────────────
+    // solvenza
 
-    describe("solvency invariant", function () {
-        // After full lifecycle, LendingPool ETH balance must equal
-        // sum(deposits) + compensationPool. No phantom claims.
+    describe("solvency invariant", function () {                                                        // test per verificare che dopo una serie di pagamenti parziali, il bilancio del contratto LendingPool sia sempre sufficiente a coprire i depositi dei contributori più eventuale compensazione accumulata nella compensation pool
         it("multi-installment repay with floor leftover preserves solvency", async function () {
-            // Use small wei amounts to force floor leftover.
-            // D1 = 600_000, D2 = 400_000. Total 1_000_000.
-            // Loan = 500_000. share1 = 300_000, share2 = 200_000.
             const D1 = 600_000n;
             const D2 = 400_000n;
             const L = 500_000n;
             await pool.connect(c1).deposit({ value: D1 });
             await pool.connect(c2).deposit({ value: D2 });
-            await pool
-                .connect(applicant)
-                .submitProposal(L, RATE, DURATION, BTC);
+            await pool.connect(applicant).submitProposal(L, RATE, DURATION, BTC);
             await pool.connect(c1).vote(0n, true);
             await pool.connect(c2).vote(0n, true);
             await mine(15);
             const tx = await pool.connect(applicant).resolveProposal(0n);
             const r = await tx.wait();
-            const log = r.logs.find(
-                (l) => l.fragment && l.fragment.name === "ProposalApproved"
-            );
+            const log = r.logs.find((l) => l.fragment && l.fragment.name === "ProposalApproved");
             const loan = LoanFactory.attach(log.args[1]);
 
-            // Repay in tre installments. R1+R2 saturano il capitale; R3 paga interesse
-            // (expectedInterest = L * RATE / 100 = 50_000 wei) per chiudere Successful.
-            await loan.connect(applicant).partialRepay({ value: 7n });
-            await loan
-                .connect(applicant)
-                .partialRepay({ value: L - 7n });
-            // Dopo R1+R2: remainingLoanAmount=0, status Active (interesse non saldato).
+            await loan.connect(applicant).partialRepay({ value: 7n });                                  // R1 paga 7 wei, tutti su c1. Dopo R1: remainingLoanAmount=499_993, status Active.
+            await loan.connect(applicant).partialRepay({ value: L - 7n });
+
             expect(await loan.remainingLoanAmount()).to.equal(0n);
             expect(await loan.status()).to.equal(0n);
-            // R3 paga interesse residuo (50_000 wei) -> close Successful.
-            await loan
-                .connect(applicant)
-                .partialRepay({ value: 50_000n });
+            await loan.connect(applicant).partialRepay({ value: 50_000n });
 
-            // Loan closed
             expect(await loan.status()).to.equal(2n);
 
-            // No phantom locks
             expect(await pool.lockedValue(c1.address)).to.equal(0n);
             expect(await pool.lockedValue(c2.address)).to.equal(0n);
             expect(await pool.totalLocked()).to.equal(0n);
 
-            // CRITICAL: LendingPool ETH balance == deposits sum + comp pool.
             const poolEth = await ethers.provider.getBalance(pool.target);
             const sumDeposits = D1 + D2;
             const comp = await pool.compensationPool();
             expect(poolEth).to.equal(sumDeposits + comp);
 
-            // Both contributors can withdraw full disposable
             await pool.connect(c1).withdraw(D1);
             await pool.connect(c2).withdraw(D2);
 
-            // Residual = compPool (still backed by ETH)
             const residualEth = await ethers.provider.getBalance(pool.target);
             expect(residualEth).to.equal(comp);
         });
 
-        it("single full repay (no leftover) preserves solvency", async function () {
+        it("single full repay (no leftover) preserves solvency", async function () {                // stessa verifica con unico pagamento parziale che copre interamente il prestito più gli interessi, senza importo residuo
             const loan = await setupLoan6_4_5();
-            // capitale+interesse = 5.5 ETH per Successful.
-            await loan
-                .connect(applicant)
-                .partialRepay({ value: (ONE_ETH * 55n) / 10n });
+            await loan.connect(applicant).partialRepay({ value: (ONE_ETH * 55n) / 10n });
             const poolEth = await ethers.provider.getBalance(pool.target);
             const sumDeposits = ONE_ETH * 10n;
             const comp = await pool.compensationPool();
             expect(poolEth).to.equal(sumDeposits + comp);
-            // Withdrawals succeed for full original deposits
+
             await pool.connect(c1).withdraw(ONE_ETH * 6n);
             await pool.connect(c2).withdraw(ONE_ETH * 4n);
         });
     });
 
-    // ── markFailed access control ─────────────────────────────────────────────
+    // markfailed
 
-    describe("markFailed", function () {
+    describe("markFailed", function () {                                                // test per verificare che la funzione markFailed del prestito possa essere chiamata solo dal contratto LendingPool       
         it("only LendingPool can call", async function () {
             const loan = await setupLoan6_4_5();
-            await expect(
-                loan.connect(stranger).markFailed()
-            ).to.be.revertedWith("Only LendingPool");
-            await expect(
-                loan.connect(applicant).markFailed()
-            ).to.be.revertedWith("Only LendingPool");
+            await expect(loan.connect(stranger).markFailed()).to.be.revertedWith("Only LendingPool");
+            await expect(loan.connect(applicant).markFailed()).to.be.revertedWith("Only LendingPool");
         });
     });
 
