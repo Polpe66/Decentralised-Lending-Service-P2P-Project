@@ -408,7 +408,7 @@ describe("LoanContract", function () {
             await expect(loan.connect(c1).requestCompensation()).to.be.revertedWith("Nothing owed");
         });
 
-        it("first call marks loan FAILED and bumps collateral percentage", async function () {
+        it("first call marks loan FAILED and bumps collateral percentage", async function () {          // verifica che se viene chiamata la funzione requestCompensation da un contributore dopo la scadenza del prestito, e il prestito non è stato completamente rimborsato, la prima chiamata segna il prestito come Failed e aumenta la collateral percentage del prestito di 5 punti percentuali
             const loan = await setupExpired();
             const pctBefore = await pool.collateralPercentage();
             await loan.connect(c1).requestCompensation();
@@ -416,20 +416,14 @@ describe("LoanContract", function () {
             expect(await pool.collateralPercentage()).to.equal(pctBefore + 5n);
         });
 
-        it("emits MarkedFailed only on first call", async function () {
+        it("emits MarkedFailed only on first call", async function () {                         // verifica che quando viene chiamata la funzione requestCompensation da un contributore dopo la scadenza del prestito, se è la prima volta che viene chiamata e il prestito viene segnato come Failed, venga emesso un evento MarkedFailed, ma se viene chiamata una seconda volta dallo stesso o da un altro contributore, non venga emesso un secondo evento MarkedFailed
             const loan = await setupExpired();
-            await expect(loan.connect(c1).requestCompensation()).to.emit(
-                loan,
-                "MarkedFailed"
-            );
+            await expect(loan.connect(c1).requestCompensation()).to.emit(loan,"MarkedFailed");
             // c2 calls — already Failed, no second MarkedFailed event.
-            await expect(loan.connect(c2).requestCompensation()).to.not.emit(
-                loan,
-                "MarkedFailed"
-            );
+            await expect(loan.connect(c2).requestCompensation()).to.not.emit(loan,"MarkedFailed");
         });
 
-        it("does not re-bump collateral on subsequent calls", async function () {
+        it("does not re-bump collateral on subsequent calls", async function () {               // verifica che se viene chiamata la funzione requestCompensation da un contributore dopo la scadenza del prestito, e il prestito è già stato segnato come Failed da una precedente chiamata, le chiamate successive alla funzione requestCompensation non aumentino ulteriormente la collateral percentage del prestito
             const loan = await setupExpired();
             await loan.connect(c1).requestCompensation();
             const pctAfterFirst = await pool.collateralPercentage();
@@ -437,12 +431,11 @@ describe("LoanContract", function () {
             expect(await pool.collateralPercentage()).to.equal(pctAfterFirst);
         });
 
-        // ── Payout mechanics ──────────────────────────────────────────────────
+        // meccaniche di payout
 
-        it("partial payout when comp pool < owed", async function () {
+        it("partial payout when comp pool < owed", async function () {                              // verifica che se viene chiamata la funzione requestCompensation da un contributore dopo la scadenza del prestito, e l'importo di compensazione disponibile nella compensation pool del contratto LendingPool è inferiore all'importo che il contributore dovrebbe ricevere, il contributore riceva solo l'importo disponibile nella compensation pool, e non l'intero importo che dovrebbe ricevere
             const loan = await setupExpired();
-            // Loan A funded comp pool with 1 ETH. c1 owed = 3 ETH → paid = 1.
-            // Interpretation B: ETH non lascia il pool; lockedValue cala, deposits invariato.
+      
             const compBefore = await pool.compensationPool();
             expect(compBefore).to.equal(ONE_ETH);
             const lockedBefore = await pool.lockedValue(c1.address);
@@ -452,7 +445,7 @@ describe("LoanContract", function () {
             const receipt = await tx.wait();
             const gasCost = receipt.gasUsed * receipt.gasPrice;
             const c1WalletAfter = await ethers.provider.getBalance(c1.address);
-            // wallet cala solo del gas (no ETH ricevuto)
+
             expect(c1WalletBefore - c1WalletAfter).to.equal(gasCost);
             expect(await pool.compensationPool()).to.equal(0n);
             expect(await loan.alreadyCompensated(c1.address)).to.equal(ONE_ETH);
@@ -460,87 +453,60 @@ describe("LoanContract", function () {
             expect(await pool.deposits(c1.address)).to.equal(depositsBefore);
         });
 
-        it("emits CompensationRequested with owed and paid", async function () {
+        it("emits CompensationRequested with owed and paid", async function () {                    // verifica che quando viene chiamata la funzione requestCompensation da un contributore dopo la scadenza del prestito, venga emesso un evento CompensationRequested con i parametri corretti
             const loan = await setupExpired();
-            await expect(loan.connect(c1).requestCompensation())
-                .to.emit(loan, "CompensationRequested")
-                .withArgs(c1.address, ONE_ETH * 3n, ONE_ETH);
+            await expect(loan.connect(c1).requestCompensation()).to.emit(loan, "CompensationRequested").withArgs(c1.address, ONE_ETH * 3n, ONE_ETH);
         });
 
-        it("reduces lockedValue and totalLocked by paid amount; deposits invariati", async function () {
+        it("reduces lockedValue and totalLocked by paid amount; deposits invariati", async function () {            // verifica che quando viene chiamata la funzione requestCompensation da un contributore dopo la scadenza del prestito, l'importo di compensazione pagato al contributore venga detratto dal lockedValue del contributore e dal totalLocked del contratto LendingPool
             const loan = await setupExpired();
             const depBefore = await pool.deposits(c1.address);
             const lockBefore = await pool.lockedValue(c1.address);
             const totFundBefore = await pool.totalFundingPool();
             const totLockBefore = await pool.totalLocked();
             await loan.connect(c1).requestCompensation();
-            // Interpretation B: deposits e totalFundingPool invariati. Solo lockedValue
-            // e totalLocked calano. Contributor riacquista disposable, ETH resta in pool.
+  
             expect(await pool.deposits(c1.address)).to.equal(depBefore);
             expect(await pool.totalFundingPool()).to.equal(totFundBefore);
-            expect(await pool.lockedValue(c1.address)).to.equal(
-                lockBefore - ONE_ETH
-            );
+            expect(await pool.lockedValue(c1.address)).to.equal(lockBefore - ONE_ETH);
             expect(await pool.totalLocked()).to.equal(totLockBefore - ONE_ETH);
         });
 
-        it("claim sets up outstanding for waterfall forfeit", async function () {
+        it("claim sets up outstanding for waterfall forfeit", async function () {                   // alreadyCompensated cresce solo quando riceve partialRepay dopo claim
             const loan = await setupExpired();
-            // No claim → no outstanding, compRecovered=0, alreadyCompensated=0.
             expect(await loan.alreadyCompensated(c1.address)).to.equal(0n);
             expect(await loan.compRecovered(c1.address)).to.equal(0n);
             await loan.connect(c1).requestCompensation();
-            // alreadyCompensated tracks cumulative payout; compRecovered stays 0
-            // until partialRepay diverts shares back.
+
             expect(await loan.alreadyCompensated(c1.address)).to.equal(ONE_ETH);
             expect(await loan.compRecovered(c1.address)).to.equal(0n);
         });
 
-        it("no revert when comp pool is empty (paid=0 allowed)", async function () {
+        it("no revert when comp pool is empty (paid=0 allowed)", async function () {        // verifica che se viene chiamata la funzione requestCompensation da un contributore dopo la scadenza del prestito, e la compensation pool  è vuota, la chiamata non venga rifiutata, ma il contributore riceva semplicemente 0 come importo di compensazione
             const loan = await setupExpired();
             await loan.connect(c1).requestCompensation(); // drains 1 ETH
-            // Now pool empty. Second call: owed > 0, avail = 0 → paid = 0.
-            await expect(
-                loan.connect(c1).requestCompensation()
-            ).to.emit(loan, "CompensationRequested").withArgs(
-                c1.address,
-                ONE_ETH * 2n,
-                0n
-            );
+            await expect(loan.connect(c1).requestCompensation()).to.emit(loan, "CompensationRequested").withArgs(c1.address,ONE_ETH * 2n,0n);
         });
 
-        // ── Multi-call refill cycle ───────────────────────────────────────────
 
-        it("can claim more as comp pool refills (waterfall split)", async function () {
-            const loan = await setupExpired();
-            // First claim: 1 ETH. outstanding = 1, remainingShare = 3.
+        it("can claim more as comp pool refills (waterfall split)", async function () {         // verifica che se viene chiamata la funzione requestCompensation da un contributore dopo la scadenza del prestito, e l'importo di compensazione disponibile nella compensation pool è inferiore all'importo che il contributore dovrebbe ricevere, ma successivamente viene effettuato un pagamento parziale che include una parte di compensazione e rifilla la compensation pool,
+                                                                                                // il contributore possa chiamare nuovamente la funzione requestCompensation per ricevere l'importo di compensazione rimanente, e che la distribuzione della compensazione segua l'ordine della waterfall
+            const loan = await setupExpired();      
             await loan.connect(c1).requestCompensation();
             expect(await loan.alreadyCompensated(c1.address)).to.equal(ONE_ETH);
 
-            // Applicant partial-repays 2 ETH. Waterfall: c1 capacity=3, take=2;
-            //   c2 take=0.
-            // For c1: toComp = floor(2 * 1/3) = 666666666666666666 wei → comp pool.
-            //         toC   = 2e18 - toComp = 1333333333333333334 → c1 via repay.
             const toComp = (ONE_ETH * 2n) / 3n;
             const toC1 = ONE_ETH * 2n - toComp;
-            await loan
-                .connect(applicant)
-                .partialRepay({ value: ONE_ETH * 2n });
+            await loan.connect(applicant).partialRepay({ value: ONE_ETH * 2n });
             expect(await pool.compensationPool()).to.equal(toComp);
             expect(await loan.compRecovered(c1.address)).to.equal(toComp);
             expect(await loan.unlockedSoFar(c1.address)).to.equal(toC1);
             expect(await loan.unlockedSoFar(c2.address)).to.equal(0n);
 
-            // c1 second claim: owed = 3 - toC1 - 1 = toComp; avail = toComp → paid = toComp.
-            // Interpretation B: no transfer al wallet. lockedValue cala.
             const lockedBefore = await pool.lockedValue(c1.address);
             await loan.connect(c1).requestCompensation();
-            expect(await pool.lockedValue(c1.address)).to.equal(
-                lockedBefore - toComp
-            );
-            expect(await loan.alreadyCompensated(c1.address)).to.equal(
-                ONE_ETH + toComp
-            );
+            expect(await pool.lockedValue(c1.address)).to.equal(lockedBefore - toComp);
+            expect(await loan.alreadyCompensated(c1.address)).to.equal(ONE_ETH + toComp);
         });
 
         // ── partialRepay interaction with forfeited contributors ──────────────
