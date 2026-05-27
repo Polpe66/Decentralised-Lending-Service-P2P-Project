@@ -24,7 +24,6 @@ POOL_INFO_FILE = DATA_DIR / "lending_pool_info.json"
 # Config
 RPC_URL = os.environ.get("RPC_URL", "http://127.0.0.1:8545")
 POLL_INTERVAL = float(os.environ.get("POLL_INTERVAL", "5"))
-START_BLOCK = os.environ.get("START_BLOCK", "latest")
 AUTO_VOTER_DEPOSIT_ETH = float(os.environ.get("AUTO_VOTER_DEPOSIT", "0.1"))
 LOG_FILE = os.environ.get("AUTO_VOTER_LOG_FILE", str(DATA_DIR / "auto_voter.log"))
 
@@ -124,15 +123,12 @@ def main() -> int:
 
     proxy_addr = Web3.to_checksum_address(pool_info["proxy"])
     pool = w3.eth.contract(address=proxy_addr, abi=pool_info["abi"]) # crea istanza contratto lending pool utilizzando l'indirizzo del proxy e l'ABI caricati da lending_pool_info.json
-    log("INFO", "config", f"auto_voter={av_addr} pool={proxy_addr}", f"poll_interval={POLL_INTERVAL}s start_block={START_BLOCK}",)
+    log("INFO", "config", f"auto_voter={av_addr} pool={proxy_addr}", f"poll_interval={POLL_INTERVAL}s",)
 
     if not ensure_contributor(w3, pool, av_addr, av_key): # verifica se l'auto_voter è già un contributor
         return 1
 
-    if START_BLOCK == "latest": # 
-        last_block = w3.eth.block_number
-    else:
-        last_block = int(START_BLOCK)
+    last_block = w3.eth.block_number
     log("INFO", "filter", f"start_block={last_block}", "watching ProposalSubmitted")
 
     signal.signal(signal.SIGINT, _handle_signal) # ctrl+c per terminare processo
