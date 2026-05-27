@@ -1,5 +1,5 @@
 
----------------- blockchain setup and run instructions ----------------
+---------------- blockchain setup and run instructions -----------------
 
 1st terminal
 geth --datadir data removedb

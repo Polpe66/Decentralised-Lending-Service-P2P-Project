@@ -1,0 +1,84 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: #0b0e14;
+  color: #e6eaf2;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+@layer components {
+  .card {
+    @apply bg-panel border border-line rounded-xl p-4;
+  }
+  .btn {
+    @apply px-3 py-1.5 rounded-lg text-sm font-medium border border-line bg-panel2 hover:bg-line transition disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply bg-indigo-600 border-indigo-500 hover:bg-indigo-500 text-white;
+  }
+  .btn-danger {
+    @apply bg-rose-700 border-rose-600 hover:bg-rose-600 text-white;
+  }
+  .btn-ok {
+    @apply bg-emerald-700 border-emerald-600 hover:bg-emerald-600 text-white;
+  }
+  .input {
+    @apply bg-ink border border-line rounded-lg px-2.5 py-1.5 text-sm w-full focus:outline-none focus:border-indigo-500;
+  }
+  .label {
+    @apply text-xs uppercase tracking-wide text-slate-400 mb-1 block;
+  }
+  .stat {
+    @apply text-xs text-slate-400;
+  }
+  .pill {
+    @apply text-xs px-2 py-0.5 rounded-full border;
+  }
+  .mono {
+    font-variant-numeric: tabular-nums;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+}
+
+/* Diagram edges: faint by default, animated dashed flow when an event lights
+   them up. vector-effect keeps stroke width constant under the stretched
+   viewBox (preserveAspectRatio="none"). */
+.edge {
+  stroke: #2a3346;
+  stroke-width: 1.5;
+}
+.edge-active {
+  stroke: #818cf8;
+  stroke-width: 2.5;
+  stroke-dasharray: 7 6;
+  animation: edge-flow 0.6s linear infinite;
+  filter: drop-shadow(0 0 3px rgba(129, 140, 248, 0.7));
+}
+@keyframes edge-flow {
+  to {
+    stroke-dashoffset: -13;
+  }
+}
+
+/* Node glow when an event touches that actor. */
+.node-pulse {
+  animation: node-pulse 1.4s ease-out infinite;
+}
+@keyframes node-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(129, 140, 248, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(129, 140, 248, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(129, 140, 248, 0);
+  }
+}
