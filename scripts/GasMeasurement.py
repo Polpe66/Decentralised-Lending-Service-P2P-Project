@@ -1,50 +1,4 @@
-"""
-scripts/GasMeasurement.py — Per-operation gas cost report (spec §1.5).
-
-Executes every user-facing operation of the LendingPool / LoanContract /
-BitcoinOracle / UUPS-upgrade flow once on a freshly deployed pool, reads
-gasUsed + effectiveGasPrice from each receipt, and writes a CSV plus a
-formatted stdout table for inclusion in the PDF report (§2).
-
-Operations measured (20 rows, matching the project brief):
-  - deposit (new / existing contributor)
-  - withdraw
-  - requestOracleUpdate
-  - submitProposal
-  - vote (approve / reject)
-  - resolveProposal: Approved (N=2, N=5, N=10) — N drives the for-loop
-    over _contributorList, so we redeploy the pool with exactly N depositors
-    per variant. Default N variants overridable via env N_VARIANTS.
-  - resolveProposal: Rejected (pool low / btc liquidity / weighted vote)
-  - partialRepay (mid / close Successful / overpay / on Failed loan)
-  - requestCompensation (first call / subsequent call after pool refill)
-  - upgradeToAndCall (UUPS)
-
-State isolation:
-  - BitcoinOracle is shared across scenarios (balance mapping is keyed by
-    btcAddressHash, so each scenario uses a distinct hash → no contamination).
-  - LendingPool is redeployed per scenario group: `_contributorList` and
-    `proposalCount` are append-only and would otherwise leak across
-    measurements (especially the resolveProposal N variants).
-
-Oracle seeding goes through `oracle.update()` from the operator key
-directly. This sidesteps the off-chain oracle_service.py flow for setup —
-the `requestOracleUpdate` operation itself is still measured end-to-end
-(it just emits UpdateRequested; the off-chain reply is not part of the
-on-chain gas cost we care about here).
-
-Dependencies:
-  - Local node on RPC (default http://127.0.0.1:8545) with automine on for
-    instant receipts (hardhat default).
-  - Solidity artifacts compiled (npx hardhat compile).
-  - Genesis sealer keystore + password file at the paths used by
-    InitialSetup.py — needed to fund worker accounts. No reliance on the
-    accounts.json produced by InitialSetup.py (we mint our own workers).
-
-Outputs:
-  - data/gas_report.csv  — op_name, scenario, gas_used, gas_price_gwei, cost_eth
-  - stdout              — aligned table + headline summary
-"""
+# misurazioni gas per operazioni chiave in vari scenari
 
 from __future__ import annotations
 
@@ -61,74 +15,50 @@ from eth_account import Account
 from web3 import Web3
 from web3.logs import DISCARD
 
-# ── Paths (mirror InitialSetup.py) ────────────────────────────────────────────
+# Paths
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 ARTIFACTS = PROJECT_ROOT / "artifacts"
 
-KEYSTORE_PATH = (
-    DATA_DIR
-    / "keystore"
-    / "UTC--2026-05-05T14-09-10.723312492Z--d278d247a52c550508ea2b2c9321d816238fb523"
-)
+KEYSTORE_PATH = (DATA_DIR/ "keystore" / "UTC--2026-05-05T14-09-10.723312492Z--d278d247a52c550508ea2b2c9321d816238fb523")
 PASSWORD_FILE = PROJECT_ROOT / "0xd278d247A52C550508ea2b2C9321d816238fb523psw.txt"
 
 ORACLE_ARTIFACT = ARTIFACTS / "contracts" / "BitcoinOracle.sol" / "BitcoinOracle.json"
 POOL_ARTIFACT = ARTIFACTS / "contracts" / "LendingPool.sol" / "LendingPool.json"
-PROXY_ARTIFACT = (
-    ARTIFACTS / "contracts" / "LocalProxy.sol" / "LocalERC1967Proxy.json"
-)
+PROXY_ARTIFACT = (ARTIFACTS / "contracts" / "LocalProxy.sol" / "LocalERC1967Proxy.json")
 LOAN_ARTIFACT = ARTIFACTS / "contracts" / "LoanContract.sol" / "LoanContract.json"
 
 REPORT_CSV = DATA_DIR / "gas_report.csv"
 
-# ── Config (env-overridable) ──────────────────────────────────────────────────
+# Config
 
 RPC_URL = os.environ.get("RPC_URL", "http://127.0.0.1:8545")
 CHAIN_ID = int(os.environ.get("CHAIN_ID", "202526"))
 
-CONTRIB_N_VARIANTS = [
-    int(x) for x in os.environ.get("N_VARIANTS", "2,5,10").split(",") if x.strip()
-]
-# Always have enough workers for the largest N variant + the 3-contrib weighted scenario
+CONTRIB_N_VARIANTS = [int(x) for x in os.environ.get("N_VARIANTS", "2,5,10").split(",") if x.strip()]
 MAX_CONTRIBS_NEEDED = max(CONTRIB_N_VARIANTS + [3])
 N_APPLICANTS = 3
 
 FUND_DEPLOYER = 5.0
 FUND_ORACLE_OP = 1.0
-# Contributors are reused across all scenario groups. Each group deploys a
-# fresh pool so deposits in older pools stay parked in those (abandoned)
-# proxies — i.e. each scenario costs the contributor a fresh ~1 ETH deposit.
-# 20 ETH covers ~10 groups × 1 ETH + gas with a wide margin.
-FUND_CONTRIBUTOR = 20.0
-# Applicants pay gas + occasionally outflow remaining+interest in one tx
-# (partialRepay close Successful, overpay). Some of that comes back via the
-# loan disbursement, so net spend is moderate.
+FUND_CONTRIBUTOR = 20.0 
 FUND_APPLICANT = 15.0
 
-# Per-deposit default amount (large enough that proposals fit comfortably).
 DEPOSIT_WEI = Web3.to_wei("1", "ether")
 
-# Minimum deposit per contract (spec §1.3, constant fixed).
 MIN_DEPOSIT = 100_000  # wei
 
-# Loan defaults for the repay/compensation scenarios.
 DEFAULT_LOAN_AMOUNT = Web3.to_wei("0.4", "ether")
 DEFAULT_LOAN_RATE = 20
 DEFAULT_LOAN_DURATION = 20
 
-# Spec §1.3: 1 BTC = 30 ETH, 1 BTC = 1e8 sat.
-# LARGE: oracle reports ~3000 ETH equivalent → liquidity check passes.
 LARGE_BTC_SAT = 10_000_000_000  # 100 BTC = 3000 ETH equivalent
-# TINY: <0.01 ETH equivalent → liquidity check fails on any meaningful loan.
 TINY_BTC_SAT = 1_000
 
-# Spec constant — proposal voting period (block height delta).
 VOTING_PERIOD = 12
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
-
+# Helpers
 
 def load_artifact(path: Path) -> dict:
     if not path.exists():
@@ -136,7 +66,6 @@ def load_artifact(path: Path) -> dict:
             f"ERROR: artifact missing: {path}\nRun `npx hardhat compile` first."
         )
     return json.loads(path.read_text())
-
 
 @dataclass
 class GasRow:
@@ -146,17 +75,7 @@ class GasRow:
     gas_price_gwei: float
     cost_eth: float
 
-
-# ── Bench: shared state + helpers ────────────────────────────────────────────
-
-
 class Bench:
-    """Drives genesis funding, deployments, tx sends, and gas recording.
-
-    The bench keeps a single oracle deployment shared across scenarios and
-    deploys a fresh LendingPool proxy per scenario group so each measurement
-    starts from a clean `_contributorList` and `proposalCount`.
-    """
 
     def __init__(self, w3: Web3, genesis_key: bytes, genesis_addr: str, artifacts: dict):
         self.w3 = w3
@@ -169,17 +88,9 @@ class Bench:
         self.loan_art = artifacts["loan"]
         self.rows: List[GasRow] = []
 
-    # ── Funding ──────────────────────────────────────────────────────────────
-
     def fund(self, to_addr: str, eth: float) -> None:
-        tx = {
-            "to": Web3.to_checksum_address(to_addr),
-            "value": self.w3.to_wei(eth, "ether"),
-            "gas": 21_000,
-            "gasPrice": self.w3.eth.gas_price,
-            "nonce": self.genesis_nonce,
-            "chainId": CHAIN_ID,
-        }
+        tx = {"to": Web3.to_checksum_address(to_addr), "value": self.w3.to_wei(eth, "ether"), "gas": 21_000, "gasPrice": self.w3.eth.gas_price, "nonce": self.genesis_nonce, "chainId": CHAIN_ID,}
+
         signed = self.w3.eth.account.sign_transaction(tx, self.genesis_key)
         h = self.w3.eth.send_raw_transaction(signed.raw_transaction)
         self.w3.eth.wait_for_transaction_receipt(h)
@@ -190,20 +101,10 @@ class Bench:
         self.fund(a.address, eth)
         return a
 
-    # ── Tx send / measurement ────────────────────────────────────────────────
-
     def send(self, account, fn_call, value: int = 0, gas: int = 600_000):
         nonce = self.w3.eth.get_transaction_count(account.address)
-        tx = fn_call.build_transaction(
-            {
-                "from": account.address,
-                "nonce": nonce,
-                "gas": gas,
-                "gasPrice": self.w3.eth.gas_price,
-                "value": value,
-                "chainId": CHAIN_ID,
-            }
-        )
+        tx = fn_call.build_transaction({"from": account.address, "nonce": nonce, "gas": gas, "gasPrice": self.w3.eth.gas_price, "value": value, "chainId": CHAIN_ID,})
+
         signed = self.w3.eth.account.sign_transaction(tx, account.key)
         h = self.w3.eth.send_raw_transaction(signed.raw_transaction)
         rcpt = self.w3.eth.wait_for_transaction_receipt(h)
@@ -214,35 +115,21 @@ class Bench:
     def measure(self, op_name: str, scenario: str, account, fn_call,
                 value: int = 0, gas: int = 3_000_000):
         nonce = self.w3.eth.get_transaction_count(account.address)
-        tx = fn_call.build_transaction(
-            {
-                "from": account.address,
-                "nonce": nonce,
-                "gas": gas,
-                "gasPrice": self.w3.eth.gas_price,
-                "value": value,
-                "chainId": CHAIN_ID,
-            }
-        )
+        tx = fn_call.build_transaction({"from": account.address, "nonce": nonce, "gas": gas, "gasPrice": self.w3.eth.gas_price, "value": value, "chainId": CHAIN_ID,})
+
         signed = self.w3.eth.account.sign_transaction(tx, account.key)
         h = self.w3.eth.send_raw_transaction(signed.raw_transaction)
         rcpt = self.w3.eth.wait_for_transaction_receipt(h)
         if rcpt.status != 1:
-            sys.exit(
-                f"ERROR: measured tx reverted ({op_name} / {scenario}, hash=0x{h.hex()})"
-            )
+            sys.exit(f"ERROR: measured tx reverted ({op_name} / {scenario}, hash=0x{h.hex()})")
         eff_gp = rcpt.effectiveGasPrice
         gp_gwei = eff_gp / 1e9
         cost_eth = (rcpt.gasUsed * eff_gp) / 1e18
         row = GasRow(op_name, scenario, rcpt.gasUsed, gp_gwei, cost_eth)
         self.rows.append(row)
-        print(
-            f"  ✓ {op_name:<22} [{scenario:<36}] gas={rcpt.gasUsed:>8,}  "
-            f"gp={gp_gwei:>7.4f} gwei  cost={cost_eth:.6e} ETH"
-        )
-        return rcpt
 
-    # ── Mining (hardhat_mine / evm_mine / passive fallback) ─────────────────
+        print(f"  ✓ {op_name:<22} [{scenario:<36}] gas={rcpt.gasUsed:>8,}  "f"gp={gp_gwei:>7.4f} gwei  cost={cost_eth:.6e} ETH")
+        return rcpt
 
     def mine_blocks(self, n: int) -> None:
         if n <= 0:
@@ -262,47 +149,25 @@ class Bench:
         while self.w3.eth.block_number < target:
             time.sleep(1)
 
-    # ── Deployments ──────────────────────────────────────────────────────────
-
     def deploy_oracle(self, operator):
         nonce = self.w3.eth.get_transaction_count(operator.address)
-        C = self.w3.eth.contract(
-            abi=self.oracle_art["abi"], bytecode=self.oracle_art["bytecode"]
-        )
-        tx = C.constructor().build_transaction(
-            {
-                "from": operator.address,
-                "nonce": nonce,
-                "gas": 2_000_000,
-                "gasPrice": self.w3.eth.gas_price,
-                "chainId": CHAIN_ID,
-            }
-        )
+        C = self.w3.eth.contract(abi=self.oracle_art["abi"], bytecode=self.oracle_art["bytecode"])
+
+        tx = C.constructor().build_transaction({"from": operator.address, "nonce": nonce, "gas": 2_000_000, "gasPrice": self.w3.eth.gas_price, "chainId": CHAIN_ID,})
+
         signed = self.w3.eth.account.sign_transaction(tx, operator.key)
         h = self.w3.eth.send_raw_transaction(signed.raw_transaction)
         rcpt = self.w3.eth.wait_for_transaction_receipt(h)
         if rcpt.status != 1:
             sys.exit("ERROR: oracle deploy reverted")
-        return self.w3.eth.contract(
-            address=rcpt.contractAddress, abi=self.oracle_art["abi"]
-        )
+        return self.w3.eth.contract(address=rcpt.contractAddress, abi=self.oracle_art["abi"])
 
     def deploy_pool(self, deployer, oracle_addr: str):
-        """Deploy LendingPool impl + ERC1967 proxy with initialize(oracle)."""
         nonce = self.w3.eth.get_transaction_count(deployer.address)
 
-        Impl = self.w3.eth.contract(
-            abi=self.pool_art["abi"], bytecode=self.pool_art["bytecode"]
-        )
-        tx = Impl.constructor().build_transaction(
-            {
-                "from": deployer.address,
-                "nonce": nonce,
-                "gas": 6_000_000,
-                "gasPrice": self.w3.eth.gas_price,
-                "chainId": CHAIN_ID,
-            }
-        )
+        Impl = self.w3.eth.contract(abi=self.pool_art["abi"], bytecode=self.pool_art["bytecode"])
+        tx = Impl.constructor().build_transaction({"from": deployer.address, "nonce": nonce, "gas": 6_000_000, "gasPrice": self.w3.eth.gas_price, "chainId": CHAIN_ID,})
+
         signed = self.w3.eth.account.sign_transaction(tx, deployer.key)
         h = self.w3.eth.send_raw_transaction(signed.raw_transaction)
         rcpt = self.w3.eth.wait_for_transaction_receipt(h)
@@ -313,18 +178,10 @@ class Bench:
         impl_iface = self.w3.eth.contract(address=impl_addr, abi=self.pool_art["abi"])
         init_data = impl_iface.encode_abi("initialize", args=[oracle_addr])
 
-        Proxy = self.w3.eth.contract(
-            abi=self.proxy_art["abi"], bytecode=self.proxy_art["bytecode"]
-        )
-        tx = Proxy.constructor(impl_addr, init_data).build_transaction(
-            {
-                "from": deployer.address,
-                "nonce": nonce + 1,
-                "gas": 6_000_000,
-                "gasPrice": self.w3.eth.gas_price,
-                "chainId": CHAIN_ID,
-            }
-        )
+        Proxy = self.w3.eth.contract(abi=self.proxy_art["abi"], bytecode=self.proxy_art["bytecode"])
+
+        tx = Proxy.constructor(impl_addr, init_data).build_transaction({"from": deployer.address, "nonce": nonce + 1, "gas": 6_000_000, "gasPrice": self.w3.eth.gas_price, "chainId": CHAIN_ID,})
+
         signed = self.w3.eth.account.sign_transaction(tx, deployer.key)
         h = self.w3.eth.send_raw_transaction(signed.raw_transaction)
         rcpt = self.w3.eth.wait_for_transaction_receipt(h)
@@ -335,21 +192,11 @@ class Bench:
         return pool, impl_addr
 
     def deploy_pool_impl(self, deployer):
-        """Deploy a bare LendingPool implementation (no proxy) — used as v2
-        upgrade target. Same bytecode satisfies UUPS `proxiableUUID`."""
         nonce = self.w3.eth.get_transaction_count(deployer.address)
-        Impl = self.w3.eth.contract(
-            abi=self.pool_art["abi"], bytecode=self.pool_art["bytecode"]
-        )
-        tx = Impl.constructor().build_transaction(
-            {
-                "from": deployer.address,
-                "nonce": nonce,
-                "gas": 6_000_000,
-                "gasPrice": self.w3.eth.gas_price,
-                "chainId": CHAIN_ID,
-            }
-        )
+        Impl = self.w3.eth.contract(abi=self.pool_art["abi"], bytecode=self.pool_art["bytecode"])
+
+        tx = Impl.constructor().build_transaction({"from": deployer.address, "nonce": nonce, "gas": 6_000_000, "gasPrice": self.w3.eth.gas_price, "chainId": CHAIN_ID,})
+
         signed = self.w3.eth.account.sign_transaction(tx, deployer.key)
         h = self.w3.eth.send_raw_transaction(signed.raw_transaction)
         rcpt = self.w3.eth.wait_for_transaction_receipt(h)
@@ -357,37 +204,23 @@ class Bench:
             sys.exit("ERROR: v2 impl deploy reverted")
         return rcpt.contractAddress
 
-    # ── Oracle seed (direct, bypasses off-chain service) ────────────────────
 
     def seed_btc(self, oracle, operator, btc_hash: bytes, satoshi: int) -> None:
         self.send(operator, oracle.functions.update(btc_hash, satoshi), gas=200_000)
 
-    # ── Loan-build helper (used by repay + compensation scenarios) ──────────
-
-    def build_loan(self, pool, oracle, oracle_op, contribs, applicant,
-                   btc_hash, amount, rate=DEFAULT_LOAN_RATE,
-                   duration=DEFAULT_LOAN_DURATION):
-        """Deposit (if needed) → seed oracle → submitProposal → all-approve →
-        mine voting period → resolve. Returns the LoanContract instance."""
+    def build_loan(self, pool, oracle, oracle_op, contribs, applicant, btc_hash, amount, rate=DEFAULT_LOAN_RATE, duration=DEFAULT_LOAN_DURATION):
         for c in contribs:
             if not pool.functions.isContributor(c.address).call():
                 self.send(c, pool.functions.deposit(), value=DEPOSIT_WEI, gas=200_000)
         self.seed_btc(oracle, oracle_op, btc_hash, LARGE_BTC_SAT)
 
-        rcpt = self.send(
-            applicant,
-            pool.functions.submitProposal(amount, rate, duration, btc_hash),
-            gas=400_000,
-        )
-        pid = pool.events.ProposalSubmitted().process_receipt(rcpt, errors=DISCARD)[0]["args"][
-            "proposalId"
-        ]
+        rcpt = self.send(applicant, pool.functions.submitProposal(amount, rate, duration, btc_hash), gas=400_000,)
+        pid = pool.events.ProposalSubmitted().process_receipt(rcpt, errors=DISCARD)[0]["args"]["proposalId"]
+
         for c in contribs:
             self.send(c, pool.functions.vote(pid, True), gas=200_000)
         self.mine_blocks(VOTING_PERIOD + 1)
-        rcpt = self.send(
-            applicant, pool.functions.resolveProposal(pid), gas=5_000_000
-        )
+        rcpt = self.send(applicant, pool.functions.resolveProposal(pid), gas=5_000_000)
         approved = pool.events.ProposalApproved().process_receipt(rcpt, errors=DISCARD)
         if not approved:
             sys.exit("build_loan: proposal unexpectedly rejected")
@@ -395,34 +228,19 @@ class Bench:
         loan = self.w3.eth.contract(address=loan_addr, abi=self.loan_art["abi"])
         return loan
 
-    # ── Scenario groups ─────────────────────────────────────────────────────
 
     def run_simple_ops(self, deployer, oracle, oracle_op, contribs, applicants):
-        """deposit (new/existing), withdraw, requestOracleUpdate."""
         print("\n── Group: simple ops (deposit, withdraw, requestOracleUpdate) ──")
         pool, _ = self.deploy_pool(deployer, oracle.address)
         c_new = contribs[0]
         applicant = applicants[0]
         btc_hash = Web3.keccak(text="gas-simple")
 
-        self.measure(
-            "deposit", "new contributor", c_new,
-            pool.functions.deposit(), value=DEPOSIT_WEI, gas=200_000,
-        )
-        self.measure(
-            "deposit", "existing contributor", c_new,
-            pool.functions.deposit(), value=DEPOSIT_WEI, gas=200_000,
-        )
-        self.measure(
-            "withdraw", "partial", c_new,
-            pool.functions.withdraw(Web3.to_wei("0.1", "ether")), gas=200_000,
-        )
+        self.measure("deposit", "new contributor", c_new, pool.functions.deposit(), value=DEPOSIT_WEI, gas=200_000,)
+        self.measure("deposit", "existing contributor", c_new, pool.functions.deposit(), value=DEPOSIT_WEI, gas=200_000,)
+        self.measure("withdraw", "partial", c_new, pool.functions.withdraw(Web3.to_wei("0.1", "ether")), gas=200_000,)
         min_fee = oracle.functions.MIN_ORACLE_FEE().call()
-        self.measure(
-            "requestOracleUpdate", "via pool forward", applicant,
-            pool.functions.requestOracleUpdate(btc_hash),
-            value=min_fee, gas=200_000,
-        )
+        self.measure("requestOracleUpdate", "via pool forward", applicant, pool.functions.requestOracleUpdate(btc_hash), value=min_fee, gas=200_000,)
 
     def run_propose_vote(self, deployer, oracle, oracle_op, contribs, applicants):
         """submitProposal, vote approve, vote reject."""
