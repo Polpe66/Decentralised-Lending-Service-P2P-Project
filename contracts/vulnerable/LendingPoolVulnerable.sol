@@ -1,15 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-/// @dev VULNERABLE FOR DEMO — DO NOT DEPLOY
-/// @notice Copy of LendingPool with `withdraw()` intentionally broken to
-/// demonstrate a classic reentrancy attack (per spec §1.5). Two changes vs.
-/// the original `contracts/LendingPool.sol`:
-///   1. `nonReentrant` modifier removed from `withdraw()`.
-///   2. CEI order violated: external call moved BEFORE state updates.
-/// All other functions remain identical to the secure version, so the only
-/// exploitable path is `withdraw()`.
-
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
@@ -120,14 +111,7 @@ contract LendingPoolVulnerable is
         emit Deposited(msg.sender, msg.value);
     }
 
-    // ── VULNERABLE WITHDRAW ───────────────────────────────────────────────────
-    // Differences vs. secure `LendingPool.withdraw()`:
-    //   * no `nonReentrant` modifier
-    //   * external call placed BEFORE state updates (CEI violation)
-    //   * state updates wrapped in `unchecked` to mimic pre-0.8 silent
-    //     underflow (classic DAO-style reentrancy). Without it, Solidity 0.8's
-    //     default checked arithmetic would revert during stack unwinding of
-    //     nested withdrawals and mask the vulnerability under a different bug.
+    // withdraw intenzionalmente vulnerabile a reentrancy: l'ordine delle operazioni è violato (INTERACTION BEFORE EFFECTS) e non c'è alcun mutex `nonReentrant` a protezione della funzione
     function withdraw(uint256 amount) external {
         require(amount > 0, "Zero amount");
         require(
