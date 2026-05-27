@@ -158,7 +158,7 @@ def main() -> int:
 
         slept = 0.0 # dopo aver controllato i nuovi blocchi e votato sulle nuove proposte, aspetta per POLL_INTERVAL secondi prima di ricontrollare; durante questo tempo, se riceve un segnale di terminazione, esce immediatamente dal loop
         while _running and slept < POLL_INTERVAL:
-            time.sleep(0.25)
+            time.sleep(0.25) # ad ogni giro di 0.25 secondi controlla _running per vedere se deve continuare ad aspettare o se deve uscire; in questo modo, quando riceve un segnale di terminazione, non deve aspettare l'intero POLL_INTERVAL prima di uscire, ma può farlo quasi immediatamente
             slept += 0.25
 
     log("INFO", "shutdown", "clean exit", "ok")
