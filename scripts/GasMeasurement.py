@@ -239,6 +239,13 @@ class Bench: # gestisce connessione web3, account di partenza, deploy e interazi
         min_fee = oracle.functions.MIN_ORACLE_FEE().call()
         self.measure("requestOracleUpdate", "via pool forward", applicant, pool.functions.requestOracleUpdate(btc_hash), value=min_fee, gas=200_000,)
 
+    def run_oracle_update(self, oracle, oracle_op):     # scrittura diretta sull'oracle da parte dell'operatore (BitcoinOracle.update, onlyOperator). È il gas su cui lo spec 1.4 basa MIN_ORACLE_FEE (gas update * 0.1 gwei)
+        print("\n Group: oracle update (new / existing address)")
+        h = Web3.keccak(text="gas-oracle-update")   # hash dedicato per non collidere con gli altri scenari
+
+        self.measure("update", "new address (cold slot)", oracle_op, oracle.functions.update(h, LARGE_BTC_SAT), gas=120_000,)   # prima scrittura su slot storage a zero -> costo cold; spec: "add a new association if the address is not already present"
+        self.measure("update", "existing address (warm slot)", oracle_op, oracle.functions.update(h, LARGE_BTC_SAT * 2), gas=120_000,)   # seconda scrittura sullo stesso indirizzo, slot già non-zero -> costo warm (aggiornamento di un'associazione esistente)
+
     def run_propose_vote(self, deployer, oracle, oracle_op, contribs, applicants):  # proposta di prestito con voti di approvazione e rifiuto, per misurare il costo di voto in scenari semplici (1 proposta, 2 votanti)
         print("\n Group: propose + vote (approve/reject)")
         pool, _ = self.deploy_pool(deployer, oracle.address)
@@ -338,9 +345,9 @@ class Bench: # gestisce connessione web3, account di partenza, deploy e interazi
         remaining = loan1.functions.remainingLoanAmount().call()
         mid_value = remaining // 2  # rimborsa metà del prestito per misurare il gas di partialRepay in uno scenario di rimborso parziale "mid", senza chiudere il prestito
         self.measure("partialRepay", "mid (no overpay)", applicant, loan1.functions.partialRepay(), value=mid_value, gas=800_000,)
-        remaining2 = loan1.functions.remainingLoanAmount().call()   # rimborsa il resto del prestito per misurare il gas di partialRepay in uno scenario di rimborso parziale "close", dove si chiude il prestito senza pagare interessi extra
-        interest = (remaining2 * DEFAULT_LOAN_RATE) // 100
-        self.measure("partialRepay", "close Successful", applicant, loan1.functions.partialRepay(), value=remaining2 + interest, gas=1_500_000,)
+        rem_base = loan1.functions.remainingLoanAmount().call()     # base residua dopo il pagamento mid
+        rem_int = loan1.functions.remainingInterest().call()        # interesse residuo PIENO (non ridotto dai pagamenti di sola base): serve il valore reale dal contratto, non remaining2*rate/100, altrimenti il loan non si chiude e resta Active
+        self.measure("partialRepay", "close Successful", applicant, loan1.functions.partialRepay(), value=rem_base + rem_int, gas=1_500_000,)   # paga base + interesse pieno -> remainingLoanAmount e remainingInterest a 0 -> status Successful, esercita il vero path di chiusura
 
         # overpay
         loan2 = self.build_loan(pool, oracle, oracle_op, used, applicant2,Web3.keccak(text="gas-repay-2"), DEFAULT_LOAN_AMOUNT,)
@@ -375,6 +382,20 @@ class Bench: # gestisce connessione web3, account di partenza, deploy e interazi
         self.measure("requestCompensation", "subsequent (refill claim)", claimer, loan_fail.functions.requestCompensation(), gas=600_000,)  # seconda richiesta di comp
 
         self.measure("partialRepay", "on Failed loan (proportional split)", applicant, loan_fail.functions.partialRepay(), value=Web3.to_wei("0.05", "ether"), gas=1_500_000,)  # rimborso parziale su prestito fallito
+
+    def run_terminate(self, deployer, oracle, oracle_op, contribs, applicants):     # terminazione di un loan chiuso con successo; misura il gas di terminate() (spec 1.5 "properly manage contracts termination")
+        print("\n Group: terminate (Successful loan)")
+        pool, _ = self.deploy_pool(deployer, oracle.address)
+        used = contribs[:2]
+        applicant = applicants[0]
+
+        loan = self.build_loan(pool, oracle, oracle_op, used, applicant, Web3.keccak(text="gas-terminate"), DEFAULT_LOAN_AMOUNT,)
+        rem_base = loan.functions.remainingLoanAmount().call()
+        rem_int = loan.functions.remainingInterest().call()
+        payoff = rem_base + rem_int + Web3.to_wei("0.01", "ether")   # base + interesse pieno (+ buffer) per chiudere davvero il loan -> Successful; l'eccesso va alla comp pool. Senza chiusura piena terminate() farebbe revert "Loan still active"
+        self.send(applicant, loan.functions.partialRepay(), value=payoff, gas=1_500_000)
+
+        self.measure("terminate", "Successful loan", applicant, loan.functions.terminate(), gas=300_000,)
 
     def run_upgrade(self, deployer, oracle):    # test upgrade UUPS per misurare il gas di upgradeToAndCall
         print("\n Group: UUPS upgradeToAndCall ")
@@ -459,6 +480,7 @@ def main() -> int:
 
     # run scenarios 
     bench.run_simple_ops(deployer, oracle, oracle_op, contribs, applicants)
+    bench.run_oracle_update(oracle, oracle_op)
     bench.run_propose_vote(deployer, oracle, oracle_op, contribs, applicants)
     for n in CONTRIB_N_VARIANTS:
         if n > len(contribs):
@@ -470,6 +492,7 @@ def main() -> int:
     bench.run_resolve_rejected_weighted(deployer, oracle, oracle_op, contribs, applicants)
     bench.run_repay_scenarios(deployer, oracle, oracle_op, contribs, applicants)
     bench.run_compensation_and_failed_repay(deployer, oracle, oracle_op, contribs, applicants)
+    bench.run_terminate(deployer, oracle, oracle_op, contribs, applicants)
     bench.run_upgrade(deployer, oracle)
 
     #  output 
