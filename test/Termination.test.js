@@ -104,10 +104,7 @@ describe("LoanContract - terminate() lifecycle", function () {                  
             const owed = c.initialLocked - (await loan.unlockedSoFar(c.addr)) - (await loan.alreadyCompensated(c.addr));    // calcoliamo l'ammontare ancora dovuto a ciascun contributore come differenza tra l'importo inizialmente bloccato, l'importo già sbloccato e l'importo già compensato
             expect(owed).to.equal(0n);
         }
-        await expect(loan.connect(stranger).terminate()).to.emit(                                                   // terminazione riuscita, con emissione dell'evento LoanTerminated
-            loan,
-            "LoanTerminated"
-        );
+        await expect(loan.connect(stranger).terminate()).to.emit("LoanTerminated");                                        // terminazione riuscita, con emissione dell'evento LoanTerminatedloan
         expect(await loan.terminated()).to.equal(true);
     });
 
