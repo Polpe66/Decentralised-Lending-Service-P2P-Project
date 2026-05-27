@@ -36,11 +36,11 @@ REPORT_CSV = DATA_DIR / "gas_report.csv"
 RPC_URL = os.environ.get("RPC_URL", "http://127.0.0.1:8545")
 CHAIN_ID = int(os.environ.get("CHAIN_ID", "202526"))
 
-CONTRIB_N_VARIANTS = [int(x) for x in os.environ.get("N_VARIANTS", "2,5,10").split(",") if x.strip()]
-MAX_CONTRIBS_NEEDED = max(CONTRIB_N_VARIANTS + [3])
+CONTRIB_N_VARIANTS = [int(x) for x in os.environ.get("N_VARIANTS", "2,5").split(",") if x.strip()]   # per testare l'impatto del numero di contributori sulla gas used di resolveProposal Approved (resolveProposal è l'unica op O(N): 2 punti bastano a mostrare che non è a costo costante, senza esagerare. Sovrascrivibile con N_VARIANTS)
+MAX_CONTRIBS_NEEDED = max(CONTRIB_N_VARIANTS + [3])     # per assicurarsi di avere abbastanza account contributori per tutti gli scenari, incluso quello "weighted vote" che richiede 3 contribs
 N_APPLICANTS = 3
 
-FUND_DEPLOYER = 5.0
+FUND_DEPLOYER = 5.0     # per deployare contratti
 FUND_ORACLE_OP = 1.0
 FUND_CONTRIBUTOR = 20.0 
 FUND_APPLICANT = 15.0
@@ -62,20 +62,18 @@ VOTING_PERIOD = 12
 
 def load_artifact(path: Path) -> dict:
     if not path.exists():
-        sys.exit(
-            f"ERROR: artifact missing: {path}\nRun `npx hardhat compile` first."
-        )
+        sys.exit(f"ERROR: artifact missing: {path}\nRun `npx hardhat compile` first.")
     return json.loads(path.read_text())
 
-@dataclass
-class GasRow:
+@dataclass # decorator per semplificare GasRow
+class GasRow: # riga di dati per una singola misurazione gas, con nome operazione, scenario, gas usato, prezzo gas in gwei e costo totale in ETH
     op_name: str
     scenario: str
     gas_used: int
     gas_price_gwei: float
     cost_eth: float
 
-class Bench:
+class Bench: # gestisce connessione web3, account di partenza, deploy e interazione con i contratti, e raccolta dati gas
 
     def __init__(self, w3: Web3, genesis_key: bytes, genesis_addr: str, artifacts: dict):
         self.w3 = w3
@@ -88,11 +86,11 @@ class Bench:
         self.loan_art = artifacts["loan"]
         self.rows: List[GasRow] = []
 
-    def fund(self, to_addr: str, eth: float) -> None:
+    def fund(self, to_addr: str, eth: float) -> None:   # funzione per trasferire ETH dall'account genesis a un nuovo account creato per deployare o interagire con i contratti
         tx = {"to": Web3.to_checksum_address(to_addr), "value": self.w3.to_wei(eth, "ether"), "gas": 21_000, "gasPrice": self.w3.eth.gas_price, "nonce": self.genesis_nonce, "chainId": CHAIN_ID,}
 
         signed = self.w3.eth.account.sign_transaction(tx, self.genesis_key)
-        h = self.w3.eth.send_raw_transaction(signed.raw_transaction)
+        h = self.w3.eth.send_raw_transaction(signed.raw_transaction)    # invia la transazione di trasferimento ETH al nodo
         self.w3.eth.wait_for_transaction_receipt(h)
         self.genesis_nonce += 1
 
@@ -101,7 +99,7 @@ class Bench:
         self.fund(a.address, eth)
         return a
 
-    def send(self, account, fn_call, value: int = 0, gas: int = 600_000):
+    def send(self, account, fn_call, value: int = 0, gas: int = 600_000):   # funzione per inviare una transazione che chiama una funzione di un contratto, firmata da un account specifico, con un certo valore ETH e gas limit, serve per funzioni setup (deposit, voto ecc..)
         nonce = self.w3.eth.get_transaction_count(account.address)
         tx = fn_call.build_transaction({"from": account.address, "nonce": nonce, "gas": gas, "gasPrice": self.w3.eth.gas_price, "value": value, "chainId": CHAIN_ID,})
 
@@ -112,8 +110,7 @@ class Bench:
             sys.exit(f"ERROR: setup tx reverted (hash=0x{h.hex()})")
         return rcpt
 
-    def measure(self, op_name: str, scenario: str, account, fn_call,
-                value: int = 0, gas: int = 3_000_000):
+    def measure(self, op_name: str, scenario: str, account, fn_call, value: int = 0, gas: int = 3_000_000):     # funzione per misurare il gas usato da una transazione
         nonce = self.w3.eth.get_transaction_count(account.address)
         tx = fn_call.build_transaction({"from": account.address, "nonce": nonce, "gas": gas, "gasPrice": self.w3.eth.gas_price, "value": value, "chainId": CHAIN_ID,})
 
@@ -122,13 +119,13 @@ class Bench:
         rcpt = self.w3.eth.wait_for_transaction_receipt(h)
         if rcpt.status != 1:
             sys.exit(f"ERROR: measured tx reverted ({op_name} / {scenario}, hash=0x{h.hex()})")
-        eff_gp = rcpt.effectiveGasPrice
-        gp_gwei = eff_gp / 1e9
-        cost_eth = (rcpt.gasUsed * eff_gp) / 1e18
-        row = GasRow(op_name, scenario, rcpt.gasUsed, gp_gwei, cost_eth)
+        eff_gp = rcpt.effectiveGasPrice # prezzo gas effettivo pagato 
+        gp_gwei = eff_gp / 1e9      # conversione del prezzo gas in gwei per una lettura più umana
+        cost_eth = (rcpt.gasUsed * eff_gp) / 1e18       # calcolo del costo totale in ETH moltiplicando il gas usato per il prezzo gas effettivo e convertendo da wei a ETH
+        row = GasRow(op_name, scenario, rcpt.gasUsed, gp_gwei, cost_eth)    # creazione di una riga di dati con le informazioni raccolte e aggiunta alla lista delle righe per il report finale
         self.rows.append(row)
 
-        print(f"  ✓ {op_name:<22} [{scenario:<36}] gas={rcpt.gasUsed:>8,}  "f"gp={gp_gwei:>7.4f} gwei  cost={cost_eth:.6e} ETH")
+        print(f"  {op_name:<22} [{scenario:<36}] gas={rcpt.gasUsed:>8,}  "f"gp={gp_gwei:>7.4f} gwei  cost={cost_eth:.6e} ETH")
         return rcpt
 
     def mine_blocks(self, n: int) -> None:
