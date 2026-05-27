@@ -1,5 +1,5 @@
-const { expect } = require("chai");
-const { ethers, upgrades } = require("hardhat");
+const { expect } = require("chai"); // funione di asserzione, permette di verificare che il comportamento del contratto sia quello atteso
+const { ethers, upgrades } = require("hardhat"); // ethers: libreria per interagire con la blockchain, permette di inviare transazioni, chiamare funzioni dei contratti, ecc
 
 describe("LendingPool", function () {
     let pool;
