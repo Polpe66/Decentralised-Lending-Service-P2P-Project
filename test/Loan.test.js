@@ -509,98 +509,64 @@ describe("LoanContract", function () {
             expect(await loan.alreadyCompensated(c1.address)).to.equal(ONE_ETH + toComp);
         });
 
-        // ── partialRepay interaction with forfeited contributors ──────────────
-
-        it("partialRepay splits share via waterfall for partially compensated c", async function () {
+        it("partialRepay splits share via waterfall for partially compensated c", async function () {       // verifica che se viene chiamata la funzione requestCompensation da un contributore dopo la scadenza del prestito, 
+                                                                                                             // e il contributore riceve solo una parte dell'importo di compensazione che dovrebbe ricevere a causa di una compensation pool insufficiente, ma successivamente viene effettuato un pagamento parziale che include una parte di compensazione e rifilla la compensation pool,
+                                                                                                             // la distribuzione della compensazione e del capitale segue l'ordine della waterfall, tenendo conto dell'importo già compensato al contributore
             const loan = await setupExpired();
             await loan.connect(c1).requestCompensation();
-            // c1 outstanding = 1 ETH (alreadyCompensated=1, compRecovered=0).
-            // capacity_c1 = 3 - 0 - 0 = 3.
-            // Applicant repays 2.5 ETH. Waterfall: c1 take=2.5 (≤ capacity 3), c2 take=0.
-            // For c1: toComp = floor(2.5 * 1/3) = 833333333333333333 → comp pool.
-            //         toC   = 2.5e18 - toComp = 1666666666666666667 → c1 via repay.
-            // c2 untouched.
+   
             const repay = (ONE_ETH * 25n) / 10n;
             const toComp = repay / 3n;
             const toC1 = repay - toComp;
             const compBefore = await pool.compensationPool();
-            await loan
-                .connect(applicant)
-                .partialRepay({ value: repay });
+            await loan.connect(applicant).partialRepay({ value: repay });
             expect(await pool.compensationPool()).to.equal(compBefore + toComp);
             expect(await loan.unlockedSoFar(c1.address)).to.equal(toC1);
             expect(await loan.compRecovered(c1.address)).to.equal(toComp);
             expect(await loan.unlockedSoFar(c2.address)).to.equal(0n);
         });
 
-        it("Failed loan full repay does NOT decrease collateral or deregister", async function () {
+        it("Failed loan full repay does NOT decrease collateral or deregister", async function () {         // verifica che se viene chiamata la funzione requestCompensation da un contributore dopo la scadenza del prestito, e il prestito viene segnato come Failed, ma successivamente l'applicant effettua un pagamento parziale che copre interamente l'importo residuo del prestito,
+                                                                                                            //  lo stato del prestito rimanga Failed (e non diventi Successful), la collateral percentage del prestito non diminuisca, e il contratto LoanContract rimanga registrato come prestito attivo all'interno del contratto LendingPool (in modo che i contributori possano ancora richiedere eventuale compensazione residua)
             const loan = await setupExpired();
             await loan.connect(c1).requestCompensation();
             const pctAfterFail = await pool.collateralPercentage();
             expect(await pool.isActiveLoan(loan.target)).to.be.true;
 
-            // Applicant repays in full.
-            await loan
-                .connect(applicant)
-                .partialRepay({ value: ONE_ETH * 5n });
+            await loan.connect(applicant).partialRepay({ value: ONE_ETH * 5n });                            // applicant ripaga tutto il residuo
             expect(await loan.remainingLoanAmount()).to.equal(0n);
-            // status stays Failed, NOT Successful.
             expect(await loan.status()).to.equal(1n);
-            // collateral percentage unchanged.
             expect(await pool.collateralPercentage()).to.equal(pctAfterFail);
-            // Loan stays registered (compensation may still be claimed).
             expect(await pool.isActiveLoan(loan.target)).to.be.true;
         });
 
-        it("full late repay makes c1 whole via comp + share split (no remainder claim)", async function () {
+        it("full late repay makes c1 whole via comp + share split (no remainder claim)", async function () {        // se viene chiamata requestCompensation da un contributore dopo la scadenza del prestito, e il contributore riceve solo una parte dell'importo di compensazione che dovrebbe ricevere a causa di una compensation pool insufficiente, 
+                                                                                                                    // ma successivamente viene effettuato un pagamento parziale che include una parte di compensazione e rifilla la compensation pool, e poi viene effettuato un ulteriore pagamento parziale che copre interamente l'importo residuo del prestito più gli interessi,
             const loan = await setupExpired();
-            await loan.connect(c1).requestCompensation(); // paid 1 ETH, outstanding = 1
-
-            // Applicant fully repays 5 ETH.
-            // For c1: share=3, outstanding=1, remainingShare=3. toComp=1, toC=2.
-            // For c2: share=2, all toC.
-            // Comp pool: was 0 (drained), +1 from c1 forfeit = 1.
-            await loan
-                .connect(applicant)
-                .partialRepay({ value: ONE_ETH * 5n });
+            await loan.connect(c1).requestCompensation();
+            await loan.connect(applicant).partialRepay({ value: ONE_ETH * 5n });
             expect(await pool.compensationPool()).to.equal(ONE_ETH);
 
-            // c1 already fully whole: 1 (claim) + 2 (toC) = 3 = initialLocked.
-            // owed = 3 - 2 - 1 = 0 → "Nothing owed".
-            await expect(
-                loan.connect(c1).requestCompensation()
-            ).to.be.revertedWith("Nothing owed");
+            await expect(loan.connect(c1).requestCompensation()).to.be.revertedWith("Nothing owed");            // c1 ha già ricevuto tutta la compensazione che poteva ricevere, quindi ulteriori chiamate a requestCompensation non devono essere consentite
 
-            // Invariant check: c1 received exactly initialLocked total.
             expect(await loan.unlockedSoFar(c1.address)).to.equal(ONE_ETH * 2n);
             expect(await loan.alreadyCompensated(c1.address)).to.equal(ONE_ETH);
             expect(await loan.compRecovered(c1.address)).to.equal(ONE_ETH);
         });
 
-        it("partial late repay leaves c1 owed; can claim later as pool refills", async function () {
+        it("partial late repay leaves c1 owed; can claim later as pool refills", async function () {        // se viene chiamata requestCompensation da un contributore dopo la scadenza del prestito, e il contributore riceve solo una parte dell'importo di compensazione che dovrebbe ricevere a causa di una compensation pool insufficiente,
             const loan = await setupExpired();
-            await loan.connect(c1).requestCompensation(); // alreadyCompensated=1
+            await loan.connect(c1).requestCompensation();
 
-            // Applicant partial-repays 2 ETH. Waterfall: c1 take=2, c2 take=0.
-            // c1: toComp = floor(2 * 1/3), toC = 2 - toComp.
             const toComp = (ONE_ETH * 2n) / 3n;
             const toC1 = ONE_ETH * 2n - toComp;
-            await loan
-                .connect(applicant)
-                .partialRepay({ value: ONE_ETH * 2n });
-            // Comp pool refilled by toComp.
+            await loan.connect(applicant).partialRepay({ value: ONE_ETH * 2n });
             expect(await pool.compensationPool()).to.equal(toComp);
 
-            // c1 still owed: 3 - toC1 - 1 = toComp. avail = toComp → paid = toComp.
-            // Interpretation B: lockedValue cala, no transfer wallet.
             const lockedBefore = await pool.lockedValue(c1.address);
             await loan.connect(c1).requestCompensation();
-            expect(await pool.lockedValue(c1.address)).to.equal(
-                lockedBefore - toComp
-            );
-            expect(await loan.alreadyCompensated(c1.address)).to.equal(
-                ONE_ETH + toComp
-            );
+            expect(await pool.lockedValue(c1.address)).to.equal(lockedBefore - toComp);
+            expect(await loan.alreadyCompensated(c1.address)).to.equal(ONE_ETH + toComp);
         });
 
         // ── Regression: residue underflow when toComp floors away from ideal ──
