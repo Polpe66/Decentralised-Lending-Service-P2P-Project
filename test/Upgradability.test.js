@@ -47,7 +47,7 @@ describe("LendingPool - UUPS upgradability", function () {                      
                 kind: "uups",
                 unsafeAllow: ["missing-initializer-call"],
             })
-        ).to.be.reverted;                                                                       // ci aspettiamo che l'upgrade fallisca con un revert, poiché l'account "straniero" non ha i permessi necessari per eseguire l'upgrade
+        ).to.be.revertedWithCustomError(pool, "OwnableUnauthorizedAccount").withArgs(stranger.address);    // ci aspettiamo che l'upgrade fallisca: _authorizeUpgrade è onlyOwner, quindi un account non-owner viene respinto con l'errore OZ OwnableUnauthorizedAccount(account)
     });
 
     it("upgrade preserves the proxy address and all v1 state", async function () {              // verifica che dopo l'upgrade l'indirizzo del proxy rimanga lo stesso e che tutti i dati di stato del contratto vengano preservati correttamente
@@ -113,7 +113,8 @@ describe("LendingPool - UUPS upgradability", function () {                      
             kind: "uups",
             unsafeAllow: ["missing-initializer-call"],
         });
-        await expect(upgraded.initialize(mockOracle.target)).to.be.reverted; 
+        await expect(upgraded.initialize(mockOracle.target))
+            .to.be.revertedWithCustomError(upgraded, "InvalidInitialization");  // initialize è già stata consumata al deploy: il flag `initializer` blocca la seconda chiamata (errore OZ InvalidInitialization)
     });
 
     it("v1 functions keep working post-upgrade (deposit + vote + partialRepay)", async function () {        // verifica che tutte le funzioni della versione V1 del contratto continuino a funzionare correttamente anche dopo l'upgrade
