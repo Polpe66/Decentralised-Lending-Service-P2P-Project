@@ -1,21 +1,23 @@
-op_name,scenario,gas_used,gas_price_gwei,cost_eth
-deposit,new contributor,141091,1.000000,0.000141091000
-deposit,existing contributor,42421,1.000000,0.000042421000
-withdraw,partial,49984,1.000000,0.000049984000
-requestOracleUpdate,via pool forward,40973,1.000000,0.000040973000
-submitProposal,"valid (amount<=disp, btc ok)",184398,1.000000,0.000184398000
-vote,approve,123903,1.000000,0.000123903000
-vote,reject,59675,1.000000,0.000059675000
-resolveProposal,Approved (N=2),1857149,1.000000,0.001857149000
-resolveProposal,Approved (N=5),2162796,1.000000,0.002162796000
-resolveProposal,Approved (N=10),2678306,1.000000,0.002678306000
-resolveProposal,Rejected (pool low),63139,1.000000,0.000063139000
-resolveProposal,Rejected (btc liquidity),73084,1.000000,0.000073084000
-resolveProposal,Rejected (weighted vote),82345,1.000000,0.000082345000
-partialRepay,mid (no overpay),78805,1.000000,0.000078805000
-partialRepay,close Successful,152272,1.000000,0.000152272000
-partialRepay,overpay (extra interest),155052,1.000000,0.000155052000
-requestCompensation,first call (marks Failed),114994,1.000000,0.000114994000
-requestCompensation,subsequent (refill claim),67444,1.000000,0.000067444000
-partialRepay,on Failed loan (proportional split),147364,1.000000,0.000147364000
-upgradeToAndCall,UUPS v2 swap,37736,1.000000,0.000037736000
+op_name,scenario,gas_used,cost_eth
+deposit,new contributor,138734,0.000138734000
+deposit,existing contributor,40064,0.000040064000
+withdraw,partial,49895,0.000049895000
+requestOracleUpdate,via pool forward,40951,0.000040951000
+update,new address (cold slot),45703,0.000045703000
+update,existing address (warm slot),28603,0.000028603000
+submitProposal,"valid (amount<=disp, btc ok)",184376,0.000184376000
+vote,approve,123881,0.000123881000
+vote,reject,59653,0.000059653000
+resolveProposal,Approved (N=2),1972086,0.001972086000
+resolveProposal,Approved (N=5),2346916,0.002346916000
+resolveProposal,Rejected (pool low),63139,0.000063139000
+resolveProposal,Rejected (btc liquidity),73084,0.000073084000
+resolveProposal,Rejected (weighted vote),82345,0.000082345000
+partialRepay,mid (no overpay),81566,0.000081566000
+partialRepay,close Successful,190005,0.000190005000
+partialRepay,overpay (extra interest),192831,0.000192831000
+requestCompensation,first call (marks Failed),85212,0.000085212000
+requestCompensation,subsequent (refill claim),47698,0.000047698000
+partialRepay,on Failed loan (proportional split),150058,0.000150058000
+terminate,Successful loan,27696,0.000027696000
+upgradeToAndCall,UUPS v2 swap,37692,0.000037692000
