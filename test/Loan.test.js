@@ -6,7 +6,7 @@ describe("LoanContract", function () {
     let owner, applicant, c1, c2, c3, stranger;
 
     const BTC = ethers.keccak256(ethers.toUtf8Bytes("btc-addr"));
-    const HUGE_BTC = ethers.parseEther("1000");
+    const MANY_BTC = ethers.parseEther("1000");
     const DURATION = 100n;
     const RATE = 10n;
     const ONE_ETH = ethers.parseEther("1");
@@ -15,26 +15,17 @@ describe("LoanContract", function () {
         await network.provider.send("hardhat_mine", ["0x" + n.toString(16)]);
     }
 
-    /// Deploy a loan with two contributors (D1=6, D2=4 ETH; loan=5 ETH).
-    /// Shares deterministic: c1=3 ETH, c2=2 ETH (sorted DESC).
-    async function setupLoan6_4_5() {
+    async function setupLoan6_4_5() {                                                           // funzione di setup per creare un prestito con 5 ETH di capitale, 50% collateral percentage, e 10% di interesse atteso, con due contributori
         await pool.connect(c1).deposit({ value: ONE_ETH * 6n });
         await pool.connect(c2).deposit({ value: ONE_ETH * 4n });
-        await pool.connect(applicant).submitProposal(
-            ONE_ETH * 5n,
-            RATE,
-            DURATION,
-            BTC
-        );
+        await pool.connect(applicant).submitProposal(ONE_ETH * 5n,RATE,DURATION,BTC);
         await pool.connect(c1).vote(0n, true);
         await pool.connect(c2).vote(0n, true);
         await mine(15);
         const tx = await pool.connect(applicant).resolveProposal(0n);
         const receipt = await tx.wait();
-        const log = receipt.logs.find(
-            (l) => l.fragment && l.fragment.name === "ProposalApproved"
-        );
-        const loanAddr = log.args[1];
+        const log = receipt.logs.find((l) => l.fragment && l.fragment.name === "ProposalApproved");
+        const loanAddr = log.args[1];                                                                           // il secondo argomento dell'evento ProposalApproved è l'indirizzo del nuovo contratto LoanContract creato per il prestito approvato
         return LoanFactory.attach(loanAddr);
     }
 
@@ -43,7 +34,7 @@ describe("LoanContract", function () {
 
         const MockOracle = await ethers.getContractFactory("MockBitcoinOracle");
         mockOracle = await MockOracle.deploy();
-        await mockOracle.setEthEquivalent(BTC, HUGE_BTC);
+        await mockOracle.setEthEquivalent(BTC, MANY_BTC);
 
         const LendingPool = await ethers.getContractFactory("LendingPool");
         pool = await upgrades.deployProxy(LendingPool, [mockOracle.target], {
@@ -53,9 +44,9 @@ describe("LoanContract", function () {
         LoanFactory = await ethers.getContractFactory("LoanContract");
     });
 
-    // ── Constructor / deployment via LendingPool ──────────────────────────────
+    // costruttore / risoluzione proposta
 
-    describe("deployment via LendingPool.resolveProposal", function () {
+    describe("deployment via LendingPool.resolveProposal", function () {                // test per verificare che il contratto LoanContract venga creato correttamente con i parametri attesi quando una proposta di prestito viene approvata e risolta tramite LendingPool.resolveProposal()
         it("stores constructor params", async function () {
             const loan = await setupLoan6_4_5();
             expect(await loan.applicant()).to.equal(applicant.address);
@@ -67,40 +58,32 @@ describe("LoanContract", function () {
             expect(await loan.totalInitialLocked()).to.equal(ONE_ETH * 5n);
         });
 
-        it("expiryBlock = block.number_at_resolve + duration", async function () {
-            await pool.connect(c1).deposit({ value: ONE_ETH * 6n });
+        it("expiryBlock = block.number_at_resolve + duration", async function () {      // controlla che il blocco di scadenza del prestito sia calcolato correttamente come il blocco in cui viene risolta la proposta più la durata specificata nella proposta
+            await pool.connect(c1).deposit({ value: ONE_ETH * 6n });    
             await pool.connect(c2).deposit({ value: ONE_ETH * 4n });
-            await pool
-                .connect(applicant)
-                .submitProposal(ONE_ETH * 5n, RATE, DURATION, BTC);
+            await pool.connect(applicant).submitProposal(ONE_ETH * 5n, RATE, DURATION, BTC);
             await pool.connect(c1).vote(0n, true);
             await pool.connect(c2).vote(0n, true);
             await mine(15);
             const tx = await pool.connect(applicant).resolveProposal(0n);
             const receipt = await tx.wait();
             const resolveBlock = BigInt(receipt.blockNumber);
-            const log = receipt.logs.find(
-                (l) => l.fragment && l.fragment.name === "ProposalApproved"
-            );
+            const log = receipt.logs.find((l) => l.fragment && l.fragment.name === "ProposalApproved");
             const loan = LoanFactory.attach(log.args[1]);
             expect(await loan.expiryBlock()).to.equal(resolveBlock + DURATION);
         });
 
-        it("disburses loanedAmount to applicant", async function () {
+        it("disburses loanedAmount to applicant", async function () {                   // verifica che quando la proposta viene risolta e il prestito viene creato, l'importo del prestito (loanedAmount) venga effettivamente trasferito all'applicant, rendendo disponibile l'ETH per l'applicant da utilizzare come desidera
             await pool.connect(c1).deposit({ value: ONE_ETH * 6n });
             await pool.connect(c2).deposit({ value: ONE_ETH * 4n });
-            await pool
-                .connect(applicant)
-                .submitProposal(ONE_ETH * 5n, RATE, DURATION, BTC);
+            await pool.connect(applicant).submitProposal(ONE_ETH * 5n, RATE, DURATION, BTC);
             await pool.connect(c1).vote(0n, true);
             await pool.connect(c2).vote(0n, true);
             await mine(15);
-            await expect(
-                pool.connect(applicant).resolveProposal(0n)
-            ).to.changeEtherBalance(applicant, ONE_ETH * 5n);
+            await expect(pool.connect(applicant).resolveProposal(0n)).to.changeEtherBalance(applicant, ONE_ETH * 5n);
         });
 
-        it("contributors stored DESC by initialLocked", async function () {
+        it("contributors stored DESC by initialLocked", async function () {             // verifica che i contributori del prestito vengano memorizzati in ordine decrescente in base alla quantità di ETH che hanno inizialmente bloccato
             const loan = await setupLoan6_4_5();
             const e0 = await loan.contributors(0);
             const e1 = await loan.contributors(1);
@@ -110,18 +93,15 @@ describe("LoanContract", function () {
             expect(e1.initialLocked).to.equal(ONE_ETH * 2n);
         });
 
-        it("emits LoanCreated", async function () {
+        it("emits LoanCreated", async function () {                                       // verifica che durante la creazione del prestito venga emesso un evento LoanCreated con i parametri corretti (applicant, loanedAmount, collateralPercentage)
             await pool.connect(c1).deposit({ value: ONE_ETH * 6n });
             await pool.connect(c2).deposit({ value: ONE_ETH * 4n });
-            await pool
-                .connect(applicant)
-                .submitProposal(ONE_ETH * 5n, RATE, DURATION, BTC);
+            await pool.connect(applicant).submitProposal(ONE_ETH * 5n, RATE, DURATION, BTC);
             await pool.connect(c1).vote(0n, true);
             await pool.connect(c2).vote(0n, true);
             await mine(15);
-            // LoanCreated is emitted by LoanContract during construction; we filter
-            // the resolveProposal receipt for it.
-            const tx = await pool.connect(applicant).resolveProposal(0n);
+
+            const tx = await pool.connect(applicant).resolveProposal(0n);                   // risolve la proposta e crea il prestito, poi intercetta la transazione per analizzare i log ed estrarre l'evento LoanCreated emesso dal costruttore del prestito
             const receipt = await tx.wait();
             const iface = LoanFactory.interface;
             const created = receipt.logs
@@ -139,38 +119,29 @@ describe("LoanContract", function () {
             expect(created.args.collateralPercentage).to.equal(50n);
         });
 
-        it("loan is registered active in LendingPool", async function () {
+        it("loan is registered active in LendingPool", async function () {              // verifica che dopo la creazione del prestito, il contratto LoanContract venga registrato come prestito attivo all'interno del contratto LendingPool
             const loan = await setupLoan6_4_5();
             expect(await pool.isActiveLoan(loan.target)).to.be.true;
         });
     });
 
-    // ── partialRepay access control ───────────────────────────────────────────
+    // partialRepay
 
-    describe("partialRepay access control", function () {
+    describe("partialRepay access control", function () {                               // test per verificare che la funzione partialRepay del prestito possa essere chiamata solo dall'applicant
         it("only applicant can call", async function () {
             const loan = await setupLoan6_4_5();
-            await expect(
-                loan.connect(stranger).partialRepay({ value: ONE_ETH })
-            ).to.be.revertedWith("Only applicant");
+            await expect(loan.connect(stranger).partialRepay({ value: ONE_ETH })).to.be.revertedWith("Only applicant");
         });
 
-        it("reverts on zero value", async function () {
+        it("reverts on zero value", async function () {                                 // verifica che se viene chiamata la funzione partialRepay con un valore di pagamento
             const loan = await setupLoan6_4_5();
-            await expect(
-                loan.connect(applicant).partialRepay({ value: 0n })
-            ).to.be.revertedWith("Zero value");
+            await expect(loan.connect(applicant).partialRepay({ value: 0n })).to.be.revertedWith("Zero value");
         });
 
-        it("reverts after loan closed (Successful)", async function () {
+        it("reverts after loan closed (Successful)", async function () {                // verifica che se viene chiamata la funzione partialRepay dopo che il prestito è stato chiuso come Successful
             const loan = await setupLoan6_4_5();
-            // 5 capitale + 0.5 interesse (RATE=10) per chiudere come Successful.
-            await loan
-                .connect(applicant)
-                .partialRepay({ value: (ONE_ETH * 55n) / 10n });
-            await expect(
-                loan.connect(applicant).partialRepay({ value: ONE_ETH })
-            ).to.be.revertedWith("Loan closed");
+            await loan.connect(applicant).partialRepay({ value: (ONE_ETH * 55n) / 10n });
+            await expect(loan.connect(applicant).partialRepay({ value: ONE_ETH })).to.be.revertedWith("Loan closed");
         });
     });
 
