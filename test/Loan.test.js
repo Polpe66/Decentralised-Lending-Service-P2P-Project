@@ -325,144 +325,88 @@ describe("LoanContract", function () {
         });
     });
 
-    // ── Overpay ───────────────────────────────────────────────────────────────
+    // overpay
 
-    describe("overpay", function () {
+    describe("overpay", function () {                                                                           // test per verificare che se viene effettuato un pagamento parziale che copre interamente il prestito più gli interessi, e include un importo in eccesso, l'eccesso venga interamente accreditato alla compensation pool del contratto LendingPool
         it("excess beyond capital+interest goes entirely to comp pool", async function () {
             const loan = await setupLoan6_4_5();
-            // 10 ETH su loan 5. base=5, afterBase=5, interest=0.5 (cap=expectedInterest),
-            // excess=4.5. Interest split per-contributor:
-            //   c1 take=0.3 -> coll=0.15, gain=0.15.
-            //   c2 take=0.2 -> coll=0.10, gain=0.10.
-            // interestToComp=0.25. excess=4.5 -> comp. Tot comp delta = 4.75 ETH.
             const compBefore = await pool.compensationPool();
-            await loan
-                .connect(applicant)
-                .partialRepay({ value: ONE_ETH * 10n });
+            await loan.connect(applicant).partialRepay({ value: ONE_ETH * 10n });
             const compAfter = await pool.compensationPool();
             expect(compAfter - compBefore).to.equal((ONE_ETH * 475n) / 100n);
             expect(await loan.status()).to.equal(2n);
         });
     });
 
-    // ── requestCompensation ───────────────────────────────────────────────────
+    // request compensation
 
-    describe("requestCompensation", function () {
-        /// Setup: full a 2-ETH loan with 2-ETH interest first (funds comp pool
-        /// with 1 ETH at pct=50 → pct decreases to 45 after close). Then create
-        /// a 5-ETH loan that we let expire without any repayment. Returns the
-        /// failed-loan contract handle.
+    describe("requestCompensation", function () {                                                           // test per verificare che la funzione requestCompensation del prestito possa essere chiamata solo da un contributore del prestito dopo la scadenza del prestito, e che se viene chiamata correttamente, il contributore riceva l'importo di compensazione
         async function setupFailedLoan() {
             await pool.connect(c1).deposit({ value: ONE_ETH * 6n });
             await pool.connect(c2).deposit({ value: ONE_ETH * 4n });
-
-            // Loan A — 2 ETH borrowed, repaid 3.1 ETH per seedare comp pool con 1 ETH.
-            // Breakdown (RATE=10, pct=50): base=2, afterBase=1.1, interest=0.2 (cap),
-            //   excess=0.9. collateral=0.1 -> comp; gain=0.1 -> wallets contributors;
-            //   excess=0.9 -> comp. Tot comp delta = 1.0 ETH.
-            await pool
-                .connect(applicant)
-                .submitProposal(ONE_ETH * 2n, RATE, DURATION, BTC);
+            await pool.connect(applicant).submitProposal(ONE_ETH * 2n, RATE, DURATION, BTC);
             await pool.connect(c1).vote(0n, true);
             await pool.connect(c2).vote(0n, true);
             await mine(15);
             const txA = await pool.connect(applicant).resolveProposal(0n);
             const rA = await txA.wait();
-            const logA = rA.logs.find(
-                (l) => l.fragment && l.fragment.name === "ProposalApproved"
-            );
+            const logA = rA.logs.find((l) => l.fragment && l.fragment.name === "ProposalApproved");
             const loanA = LoanFactory.attach(logA.args[1]);
-            await loanA
-                .connect(applicant)
-                .partialRepay({ value: (ONE_ETH * 31n) / 10n });
+            await loanA.connect(applicant).partialRepay({ value: (ONE_ETH * 31n) / 10n });
 
-            // Loan B — 5 ETH, will expire without repayment.
-            await pool
-                .connect(applicant)
-                .submitProposal(ONE_ETH * 5n, RATE, DURATION, BTC);
+            await pool.connect(applicant).submitProposal(ONE_ETH * 5n, RATE, DURATION, BTC);            // Loan B: 5 ETH capitale, 0.5 interesse atteso. Collateral pct = 45 (50 + 5 da loan A). Dopo la scadenza, c1 owed = 3 ETH, c2 owed = 2 ETH.
             await pool.connect(c1).vote(1n, true);
             await pool.connect(c2).vote(1n, true);
             await mine(15);
             const txB = await pool.connect(applicant).resolveProposal(1n);
             const rB = await txB.wait();
-            const logB = rB.logs.find(
-                (l) => l.fragment && l.fragment.name === "ProposalApproved"
-            );
+            const logB = rB.logs.find((l) => l.fragment && l.fragment.name === "ProposalApproved");
             const loanB = LoanFactory.attach(logB.args[1]);
             return loanB;
         }
 
-        async function setupExpired() {
+        async function setupExpired() {                                                                 // funzione di setup per creare un prestito già scaduto, in modo da poter testare la funzione requestCompensation in condizioni di prestito scaduto
             const loan = await setupFailedLoan();
             await mine(Number(DURATION) + 1);
             return loan;
         }
 
-        // ── Preconditions ─────────────────────────────────────────────────────
-
-        it("reverts if loan not expired", async function () {
+        it("reverts if loan not expired", async function () {                                             // verifica che se viene chiamata la funzione requestCompensation prima della scadenza del prestito, la chiamata venga rifiutata con un messaggio di errore "Not expired"
             const loan = await setupFailedLoan();
-            await expect(
-                loan.connect(c1).requestCompensation()
-            ).to.be.revertedWith("Not expired");
+            await expect(loan.connect(c1).requestCompensation()).to.be.revertedWith("Not expired");
         });
 
-        it("reverts if loan fully repaid before any failure (Successful)", async function () {
+        it("reverts if loan fully repaid before any failure (Successful)", async function () {              // verifica che se viene chiamata la funzione requestCompensation dopo la scadenza del prestito, ma il prestito è stato completamente rimborsato prima della scadenza, la chiamata venga rifiutata con un messaggio di errore "Loan successful"
             const loan = await setupFailedLoan();
-            // 5 capitale + 0.5 interesse -> Successful prima della scadenza.
-            await loan
-                .connect(applicant)
-                .partialRepay({ value: (ONE_ETH * 55n) / 10n });
+            await loan.connect(applicant).partialRepay({ value: (ONE_ETH * 55n) / 10n });
             await mine(Number(DURATION) + 1);
-            await expect(
-                loan.connect(c1).requestCompensation()
-            ).to.be.revertedWith("Loan successful");
+            await expect(loan.connect(c1).requestCompensation()).to.be.revertedWith("Loan successful");
         });
 
         it("reverts if caller is not a contributor on this loan", async function () {
             const loan = await setupExpired();
-            await expect(
-                loan.connect(stranger).requestCompensation()
-            ).to.be.revertedWith("Not a contributor");
+            await expect(loan.connect(stranger).requestCompensation()).to.be.revertedWith("Not a contributor");
         });
 
-        it("reverts if nothing owed (already fully compensated)", async function () {
-            // Pump comp pool to cover c1 fully: another successful loan.
-            // c1 owes 3 ETH on loan B. Comp pool currently holds 1 ETH from loan A.
-            // Need 2 more ETH in comp pool. Loan C: 1 ETH, repay 5 ETH (interest 4,
-            // pct=45 → collateral 1.8 ETH). Two cycles will do it.
+        it("reverts if nothing owed (already fully compensated)", async function () {                   // verifica che se viene chiamata la funzione requestCompensation da un contributore dopo la scadenza del prestito, ma il contributore non ha nulla da ricevere, la chiamata venga rifiutata con un messaggio di errore "Nothing owed"
+        
             const loan = await setupFailedLoan();
 
-            // First top-up: loan C
-            await pool
-                .connect(applicant)
-                .submitProposal(ONE_ETH, RATE, DURATION, BTC);
+            await pool.connect(applicant).submitProposal(ONE_ETH, RATE, DURATION, BTC);
             await pool.connect(c1).vote(2n, true);
             await pool.connect(c2).vote(2n, true);
             await mine(15);
             const txC = await pool.connect(applicant).resolveProposal(2n);
             const rC = await txC.wait();
-            const logC = rC.logs.find(
-                (l) => l.fragment && l.fragment.name === "ProposalApproved"
-            );
+            const logC = rC.logs.find((l) => l.fragment && l.fragment.name === "ProposalApproved");
             const loanC = LoanFactory.attach(logC.args[1]);
-            // pct currently 45 → collateral pct used for loan C = 45.
-            // Repay base 1 + interest 10 → collateral = 10 * 45/100 = 4.5 ETH → comp.
-            await loanC
-                .connect(applicant)
-                .partialRepay({ value: ONE_ETH * 11n });
+ 
+            await loanC.connect(applicant).partialRepay({ value: ONE_ETH * 11n });
 
             await mine(Number(DURATION) + 1);
-            // Claim full compensation
             await loan.connect(c1).requestCompensation();
-            // c1's owed was 3 ETH, comp pool had ≥3 ETH → fully paid.
-            // Second call: owed = 0 → revert.
-            await expect(
-                loan.connect(c1).requestCompensation()
-            ).to.be.revertedWith("Nothing owed");
+            await expect(loan.connect(c1).requestCompensation()).to.be.revertedWith("Nothing owed");
         });
-
-        // ── First call: marks failed + bumps collateral ───────────────────────
 
         it("first call marks loan FAILED and bumps collateral percentage", async function () {
             const loan = await setupExpired();
