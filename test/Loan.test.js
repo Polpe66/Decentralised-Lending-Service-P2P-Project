@@ -611,36 +611,26 @@ describe("LoanContract", function () {
             expect(cumD1).to.equal(600_000n);                                                                           // d1 ha ricevuto tutta la compensazione che doveva ricevere, tra compensazione diretta e unlocked da partialRepay, e non ha più nulla da ricevere. LockedValue di d1 non deve underfloware ma arrivare a 0.
         });
 
-        // ── Failed loan: no interest to contributors; excess all to comp pool ──
+        // Loan fallito: meccaniche di pagamento e compensazione
 
-        it("Failed loan: overpay routes everything to comp pool (no gain to contributors)", async function () {
+        it("Failed loan: overpay routes everything to comp pool (no gain to contributors)", async function () {         // verifica che se viene chiamata la funzione requestCompensation da un contributore dopo la scadenza del prestito, e il prestito viene segnato come Failed, ma successivamente l'applicant effettua un pagamento parziale che copre interamente l'importo residuo del prestito più gli interessi, e include un importo in eccesso, l'intero importo del pagamento parziale venga accreditato alla compensation pool del contratto LendingPool, e nessun guadagno venga accreditato ai contributori (poiché il prestito è Failed)
             const loan = await setupExpired();
-            // c1 claims 1 ETH (alreadyCompensated=1). Transition Active->Failed
-            // azzera remainingInterest. Da qui interest loop e' no-op.
             await loan.connect(c1).requestCompensation();
             expect(await loan.remainingInterest()).to.equal(0n);
 
-            // Applicant paga 15 ETH (5 base + 10 afterBase).
-            // - base=5: waterfall. c1 take=3 (outstanding=1, remainingShare=3 ->
-            //   toComp=1, toC=2). c2 take=2 (outstanding=0, toC=2). baseToComp=1.
-            // - afterBase=10: interest=min(10, 0)=0 (Failed), excess=10. interestToComp=0.
-            // - toComp = baseToComp(1) + interestToComp(0) + excess(10) = 11.
-            // - Close branch (wasFailed=true). Stay Failed. Residue pass no-op.
             const compBefore = await pool.compensationPool();
             const c1WalletBefore = await ethers.provider.getBalance(c1.address);
             const c2WalletBefore = await ethers.provider.getBalance(c2.address);
-            await loan
-                .connect(applicant)
-                .partialRepay({ value: ONE_ETH * 15n });
+            await loan.connect(applicant).partialRepay({ value: ONE_ETH * 15n });
             const c1WalletAfter = await ethers.provider.getBalance(c1.address);
             const c2WalletAfter = await ethers.provider.getBalance(c2.address);
             const compAfter = await pool.compensationPool();
 
-            // Nessun gain ai contributors da questo partialRepay (loan Failed).
+            // Contributori: no gain (prestito Failed).
             expect(c1WalletAfter - c1WalletBefore).to.equal(0n);
             expect(c2WalletAfter - c2WalletBefore).to.equal(0n);
 
-            // Comp pool: +11 ETH (1 base forfeit + 10 excess).
+            // cmp pool: tutto l'importo del pagamento va alla compensation pool.
             expect(compAfter - compBefore).to.equal(ONE_ETH * 11n);
 
             // Loan resta Failed (capitale full repay su Failed non transita a Successful).
