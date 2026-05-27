@@ -514,23 +514,23 @@ def write_csv(rows: List[GasRow], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", newline="") as f:
         wr = csv.writer(f)
-        wr.writerow(["op_name", "scenario", "gas_used", "gas_price_gwei", "cost_eth"])
+        wr.writerow(["op_name", "scenario", "gas_used", "cost_eth"])
         for r in rows:
             wr.writerow([
                 r.op_name, r.scenario, r.gas_used,
-                f"{r.gas_price_gwei:.6f}", f"{r.cost_eth:.12f}",
+                f"{r.cost_eth:.12f}",
             ])
 
 
 def print_table(rows: List[GasRow]) -> None:
     print("\n── Gas measurement table ──")
-    header = f"{'op_name':<22}{'scenario':<40}{'gas_used':>12}{'gp_gwei':>14}{'cost_eth':>20}"
+    header = f"{'op_name':<22}{'scenario':<40}{'gas_used':>12}{'cost_eth':>20}"
     print(header)
     print("─" * len(header))
     for r in rows:
         print(
             f"{r.op_name:<22}{r.scenario:<40}{r.gas_used:>12,}"
-            f"{r.gas_price_gwei:>14.4f}{r.cost_eth:>20.12f}"
+            f"{r.cost_eth:>20.12f}"
         )
 
 
@@ -541,8 +541,12 @@ def print_summary(rows: List[GasRow]) -> None:
     most = max(rows, key=lambda r: r.gas_used)
     least = min(rows, key=lambda r: r.gas_used)
     total_cost = sum(r.cost_eth for r in rows)
+    prices = {round(r.gas_price_gwei, 6) for r in rows}  # su chain Clique il gasPrice è fisso → 1 solo valore
+    gp_note = (f"{next(iter(prices)):.4f} gwei (constant)" if len(prices) == 1
+               else f"{min(prices):.4f}–{max(prices):.4f} gwei (variable)")
     print("\n── Headline summary ──")
     print(f"  rows recorded     : {len(rows)}")
+    print(f"  gas price         : {gp_note}")
     print(f"  total gas         : {total:,}")
     print(f"  total cost        : {total_cost:.10f} ETH")
     print(
