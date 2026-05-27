@@ -128,11 +128,11 @@ class Bench: # gestisce connessione web3, account di partenza, deploy e interazi
         print(f"  {op_name:<22} [{scenario:<36}] gas={rcpt.gasUsed:>8,}  "f"gp={gp_gwei:>7.4f} gwei  cost={cost_eth:.6e} ETH")
         return rcpt
 
-    def mine_blocks(self, n: int) -> None:
+    def mine_blocks(self, n: int) -> None:      # funzione per far avanzare la blockchain di N blocchi, necessaria per superare i periodi di voto e scadenza dei prestiti
         if n <= 0:
             return
         target = self.w3.eth.block_number + n
-        for method, args in (("hardhat_mine", [hex(n)]), ("evm_mine", [])):
+        for method, args in (("hardhat_mine", [hex(n)]), ("evm_mine", [])): # prova prima con hardhat_mine
             try:
                 if method == "evm_mine":
                     for _ in range(n):
@@ -146,9 +146,9 @@ class Bench: # gestisce connessione web3, account di partenza, deploy e interazi
         while self.w3.eth.block_number < target:
             time.sleep(1)
 
-    def deploy_oracle(self, operator):
-        nonce = self.w3.eth.get_transaction_count(operator.address)
-        C = self.w3.eth.contract(abi=self.oracle_art["abi"], bytecode=self.oracle_art["bytecode"])
+    def deploy_oracle(self, operator): # funzione per deployare il contratto Oracle, necessario per fornire i prezzi BTC-ETH ai pool e ai prestiti; ritorna un'istanza del contratto Oracle pronta per essere usata
+        nonce = self.w3.eth.get_transaction_count(operator.address)     # ottiene il nonce corrente dell'account operatore per costruire la transazione di deploy
+        C = self.w3.eth.contract(abi=self.oracle_art["abi"], bytecode=self.oracle_art["bytecode"])   # crea un'istanza del contratto Oracle a partire dall'ABI e dal bytecode compilati
 
         tx = C.constructor().build_transaction({"from": operator.address, "nonce": nonce, "gas": 2_000_000, "gasPrice": self.w3.eth.gas_price, "chainId": CHAIN_ID,})
 
@@ -157,7 +157,7 @@ class Bench: # gestisce connessione web3, account di partenza, deploy e interazi
         rcpt = self.w3.eth.wait_for_transaction_receipt(h)
         if rcpt.status != 1:
             sys.exit("ERROR: oracle deploy reverted")
-        return self.w3.eth.contract(address=rcpt.contractAddress, abi=self.oracle_art["abi"])
+        return self.w3.eth.contract(address=rcpt.contractAddress, abi=self.oracle_art["abi"]) # istanza contratto oracle
 
     def deploy_pool(self, deployer, oracle_addr: str):
         nonce = self.w3.eth.get_transaction_count(deployer.address)
