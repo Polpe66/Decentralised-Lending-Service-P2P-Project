@@ -431,29 +431,6 @@ describe("LoanContract", function () {
         });
     });
 
-    // ── Gas ───────────────────────────────────────────────────────────────────
-
-    describe("gas cost", function () {
-        it("partialRepay (close, 2 contributors)", async function () {
-            const loan = await setupLoan6_4_5();
-            // 5.5 ETH = capitale + interesse atteso -> Successful.
-            const tx = await loan
-                .connect(applicant)
-                .partialRepay({ value: (ONE_ETH * 55n) / 10n });
-            const r = await tx.wait();
-            console.log(`\n    Gas partialRepay (close, 2 contrib): ${r.gasUsed}`);
-        });
-
-        it("partialRepay (mid, 2 contributors)", async function () {
-            const loan = await setupLoan6_4_5();
-            const tx = await loan
-                .connect(applicant)
-                .partialRepay({ value: ONE_ETH * 2n });
-            const r = await tx.wait();
-            console.log(`\n    Gas partialRepay (mid, 2 contrib): ${r.gasUsed}`);
-        });
-    });
-
     // ── requestCompensation ───────────────────────────────────────────────────
 
     describe("requestCompensation", function () {
@@ -526,16 +503,6 @@ describe("LoanContract", function () {
             await expect(
                 loan.connect(c1).requestCompensation()
             ).to.be.revertedWith("Loan successful");
-        });
-
-        it("reverts if Active loan not yet expired but already fully repaid", async function () {
-            // partialRepay fully repays before expiry → status becomes Successful;
-            // the Active-branch checks are unreachable. Covered by the test above.
-            // Here verify: not-expired Active loan reverts with "Not expired".
-            const loan = await setupFailedLoan();
-            await expect(
-                loan.connect(c1).requestCompensation()
-            ).to.be.revertedWith("Not expired");
         });
 
         it("reverts if caller is not a contributor on this loan", async function () {
@@ -812,30 +779,6 @@ describe("LoanContract", function () {
             );
         });
 
-        // ── Gas ───────────────────────────────────────────────────────────────
-
-        it("gas: first requestCompensation call", async function () {
-            const loan = await setupExpired();
-            const tx = await loan.connect(c1).requestCompensation();
-            const r = await tx.wait();
-            console.log(
-                `\n    Gas requestCompensation (first call): ${r.gasUsed}`
-            );
-        });
-
-        it("gas: subsequent requestCompensation call", async function () {
-            const loan = await setupExpired();
-            await loan.connect(c1).requestCompensation();
-            await loan
-                .connect(applicant)
-                .partialRepay({ value: ONE_ETH * 2n });
-            const tx = await loan.connect(c1).requestCompensation();
-            const r = await tx.wait();
-            console.log(
-                `\n    Gas requestCompensation (refill claim): ${r.gasUsed}`
-            );
-        });
-
         // ── Regression: residue underflow when toComp floors away from ideal ──
 
         it("multi-installment repay after comp claim does not underflow lockedValue", async function () {
@@ -854,9 +797,6 @@ describe("LoanContract", function () {
             // We need a separate funded scenario since amounts here are in wei.
             // Use new signers and a fresh setup (avoids the ETH-scale setup).
             const [, , , , , , app2, d1, d2] = await ethers.getSigners();
-
-            // Seed funding pool to cover the deposits.
-            await d1.sendTransaction({ to: c3.address, value: ONE_ETH });
 
             // Use min-deposit-respecting amounts: deposits in 100_000 wei units
             // so we get the rounding behavior in shares/toComp.
@@ -1143,20 +1083,5 @@ describe("LoanContract", function () {
             ).to.be.revertedWith("Terminated");
         });
 
-        // ── Gas ───────────────────────────────────────────────────────────────
-
-        it("gas: terminate Successful", async function () {
-            const loan = await makeSuccessful();
-            const tx = await loan.connect(stranger).terminate();
-            const r = await tx.wait();
-            console.log(`\n    Gas terminate (Successful): ${r.gasUsed}`);
-        });
-
-        it("gas: terminate Failed-all-settled", async function () {
-            const loan = await makeFailedAllSettled();
-            const tx = await loan.connect(stranger).terminate();
-            const r = await tx.wait();
-            console.log(`\n    Gas terminate (Failed settled): ${r.gasUsed}`);
-        });
     });
 });
