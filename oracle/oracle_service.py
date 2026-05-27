@@ -139,7 +139,7 @@ def parse_blocks():
     # ordinamento blocchi
     ordered_blocks = sort_blocks_by_height(all_blocks)
 
-    print("Processing UTXO set and balances...")
+    print("Processing UTXO set and balances... Please wait 3-4 minutes or until you see 'Parsing completed.'") 
     utxos = {}     # (txid_hex, n) -> (address, satoshi)
     balances = {}  # address -> satoshi
 
