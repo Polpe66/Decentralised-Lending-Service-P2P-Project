@@ -159,25 +159,26 @@ class Bench: # gestisce connessione web3, account di partenza, deploy e interazi
             sys.exit("ERROR: oracle deploy reverted")
         return self.w3.eth.contract(address=rcpt.contractAddress, abi=self.oracle_art["abi"]) # istanza contratto oracle
 
-    def deploy_pool(self, deployer, oracle_addr: str):
+    def deploy_pool(self, deployer, oracle_addr: str):  # funzione per deployare un pool di prestito, che consiste in un'istanza del contratto di implementazione (LendingPool) e un'istanza del proxy (LocalERC1967Proxy) che punta all'implementazione
         nonce = self.w3.eth.get_transaction_count(deployer.address)
 
-        Impl = self.w3.eth.contract(abi=self.pool_art["abi"], bytecode=self.pool_art["bytecode"])
-        tx = Impl.constructor().build_transaction({"from": deployer.address, "nonce": nonce, "gas": 6_000_000, "gasPrice": self.w3.eth.gas_price, "chainId": CHAIN_ID,})
+        Impl = self.w3.eth.contract(abi=self.pool_art["abi"], bytecode=self.pool_art["bytecode"]) 
+
+        tx = Impl.constructor().build_transaction({"from": deployer.address, "nonce": nonce, "gas": 6_000_000, "gasPrice": self.w3.eth.gas_price, "chainId": CHAIN_ID,}) # costruisce la transazione per deployare il contratto implementazione, che serve come target per il proxy
 
         signed = self.w3.eth.account.sign_transaction(tx, deployer.key)
         h = self.w3.eth.send_raw_transaction(signed.raw_transaction)
         rcpt = self.w3.eth.wait_for_transaction_receipt(h)
         if rcpt.status != 1:
             sys.exit("ERROR: pool impl deploy reverted")
-        impl_addr = rcpt.contractAddress
-
-        impl_iface = self.w3.eth.contract(address=impl_addr, abi=self.pool_art["abi"])
-        init_data = impl_iface.encode_abi("initialize", args=[oracle_addr])
+        
+        impl_addr = rcpt.contractAddress # indirizzo del contratto implementazione appena deployato
+        impl_iface = self.w3.eth.contract(address=impl_addr, abi=self.pool_art["abi"])  # istanza del contratto implementazione per poter chiamare la funzione di inizializzazione e ottenere i dati ABI-encoded da passare al proxy
+        init_data = impl_iface.encode_abi("initialize", args=[oracle_addr]) # dati ABI-encoded passati al proxy per chiamare funzione initialize(oracle_addr)
 
         Proxy = self.w3.eth.contract(abi=self.proxy_art["abi"], bytecode=self.proxy_art["bytecode"])
 
-        tx = Proxy.constructor(impl_addr, init_data).build_transaction({"from": deployer.address, "nonce": nonce + 1, "gas": 6_000_000, "gasPrice": self.w3.eth.gas_price, "chainId": CHAIN_ID,})
+        tx = Proxy.constructor(impl_addr, init_data).build_transaction({"from": deployer.address, "nonce": nonce + 1, "gas": 6_000_000, "gasPrice": self.w3.eth.gas_price, "chainId": CHAIN_ID,}) # costruisce transazione per deployare proxy
 
         signed = self.w3.eth.account.sign_transaction(tx, deployer.key)
         h = self.w3.eth.send_raw_transaction(signed.raw_transaction)
@@ -186,9 +187,9 @@ class Bench: # gestisce connessione web3, account di partenza, deploy e interazi
             sys.exit("ERROR: pool proxy deploy reverted")
         proxy_addr = rcpt.contractAddress
         pool = self.w3.eth.contract(address=proxy_addr, abi=self.pool_art["abi"])
-        return pool, impl_addr
+        return pool, impl_addr # ritorna l'istanza del pool (proxy) e l'indirizzo dell'implementazione, che serve per il test di upgrade
 
-    def deploy_pool_impl(self, deployer):
+    def deploy_pool_impl(self, deployer):   # seconda implementazione di pool per testare upgrade UUPS 
         nonce = self.w3.eth.get_transaction_count(deployer.address)
         Impl = self.w3.eth.contract(abi=self.pool_art["abi"], bytecode=self.pool_art["bytecode"])
 
@@ -199,25 +200,25 @@ class Bench: # gestisce connessione web3, account di partenza, deploy e interazi
         rcpt = self.w3.eth.wait_for_transaction_receipt(h)
         if rcpt.status != 1:
             sys.exit("ERROR: v2 impl deploy reverted")
-        return rcpt.contractAddress
+        return rcpt.contractAddress     # ritorna solo l'indirizzo dell'implementazione, che è tutto ciò che serve per il test di upgrade
 
 
-    def seed_btc(self, oracle, operator, btc_hash: bytes, satoshi: int) -> None:
-        self.send(operator, oracle.functions.update(btc_hash, satoshi), gas=200_000)
+    def seed_btc(self, oracle, operator, btc_hash: bytes, satoshi: int) -> None: # funzione necessaria per far sì che le proposte di prestito vengano approvate o rifiutate in base alla liquidità BTC disponibile
+        self.send(operator, oracle.functions.update(btc_hash, satoshi), gas=200_000) 
 
-    def build_loan(self, pool, oracle, oracle_op, contribs, applicant, btc_hash, amount, rate=DEFAULT_LOAN_RATE, duration=DEFAULT_LOAN_DURATION):
+    def build_loan(self, pool, oracle, oracle_op, contribs, applicant, btc_hash, amount, rate=DEFAULT_LOAN_RATE, duration=DEFAULT_LOAN_DURATION):   # funzione per costruire un prestito completo, dalla proposta alla risoluzione, con voti approvativi da parte dei contributori
         for c in contribs:
-            if not pool.functions.isContributor(c.address).call():
-                self.send(c, pool.functions.deposit(), value=DEPOSIT_WEI, gas=200_000)
-        self.seed_btc(oracle, oracle_op, btc_hash, LARGE_BTC_SAT)
+            if not pool.functions.isContributor(c.address).call(): # ogni account contributor deve essere registrato come contributor nel pool
+                self.send(c, pool.functions.deposit(), value=DEPOSIT_WEI, gas=200_000)  # se non è contributor, fa deposito per diventarlo
+        self.seed_btc(oracle, oracle_op, btc_hash, LARGE_BTC_SAT)   # seed di btc sufficiente per approvare proposta
 
-        rcpt = self.send(applicant, pool.functions.submitProposal(amount, rate, duration, btc_hash), gas=400_000,)
+        rcpt = self.send(applicant, pool.functions.submitProposal(amount, rate, duration, btc_hash), gas=400_000,)  # applicant invia proposta di prestito
         pid = pool.events.ProposalSubmitted().process_receipt(rcpt, errors=DISCARD)[0]["args"]["proposalId"]
 
         for c in contribs:
-            self.send(c, pool.functions.vote(pid, True), gas=200_000)
+            self.send(c, pool.functions.vote(pid, True), gas=200_000)   # ogni contributor vota approvazione della proposta
         self.mine_blocks(VOTING_PERIOD + 1)
-        rcpt = self.send(applicant, pool.functions.resolveProposal(pid), gas=5_000_000)
+        rcpt = self.send(applicant, pool.functions.resolveProposal(pid), gas=5_000_000) # applicant risolve la proposta dopo il periodo di voto
         approved = pool.events.ProposalApproved().process_receipt(rcpt, errors=DISCARD)
         if not approved:
             sys.exit("build_loan: proposal unexpectedly rejected")
@@ -225,13 +226,12 @@ class Bench: # gestisce connessione web3, account di partenza, deploy e interazi
         loan = self.w3.eth.contract(address=loan_addr, abi=self.loan_art["abi"])
         return loan
 
-
-    def run_simple_ops(self, deployer, oracle, oracle_op, contribs, applicants):
-        print("\n── Group: simple ops (deposit, withdraw, requestOracleUpdate) ──")
-        pool, _ = self.deploy_pool(deployer, oracle.address)
-        c_new = contribs[0]
-        applicant = applicants[0]
-        btc_hash = Web3.keccak(text="gas-simple")
+    def run_simple_ops(self, deployer, oracle, oracle_op, contribs, applicants):    # operazioni che non dipendono da N contribtori o scenari complessi
+        print("\n Group: simple ops (deposit, withdraw, requestOracleUpdate)")
+        pool, _ = self.deploy_pool(deployer, oracle.address)    # deploya un pool
+        c_new = contribs[0]     # prende account contributor nuovo 
+        applicant = applicants[0]   # prende account applicant nuovo
+        btc_hash = Web3.keccak(text="gas-simple")   # hash fittizio per oracle update
 
         self.measure("deposit", "new contributor", c_new, pool.functions.deposit(), value=DEPOSIT_WEI, gas=200_000,)
         self.measure("deposit", "existing contributor", c_new, pool.functions.deposit(), value=DEPOSIT_WEI, gas=200_000,)
@@ -239,9 +239,8 @@ class Bench: # gestisce connessione web3, account di partenza, deploy e interazi
         min_fee = oracle.functions.MIN_ORACLE_FEE().call()
         self.measure("requestOracleUpdate", "via pool forward", applicant, pool.functions.requestOracleUpdate(btc_hash), value=min_fee, gas=200_000,)
 
-    def run_propose_vote(self, deployer, oracle, oracle_op, contribs, applicants):
-        """submitProposal, vote approve, vote reject."""
-        print("\n── Group: propose + vote (approve/reject) ──")
+    def run_propose_vote(self, deployer, oracle, oracle_op, contribs, applicants):  # proposta di prestito con voti di approvazione e rifiuto, per misurare il costo di voto in scenari semplici (1 proposta, 2 votanti)
+        print("\n Group: propose + vote (approve/reject)")
         pool, _ = self.deploy_pool(deployer, oracle.address)
         c0, c1 = contribs[0], contribs[1]
         applicant = applicants[0]
@@ -251,24 +250,10 @@ class Bench: # gestisce connessione web3, account di partenza, deploy e interazi
         self.send(c1, pool.functions.deposit(), value=DEPOSIT_WEI, gas=200_000)
         self.seed_btc(oracle, oracle_op, btc_hash, LARGE_BTC_SAT)
 
-        rcpt = self.measure(
-            "submitProposal", "valid (amount<=disp, btc ok)", applicant,
-            pool.functions.submitProposal(
-                DEFAULT_LOAN_AMOUNT, DEFAULT_LOAN_RATE, DEFAULT_LOAN_DURATION, btc_hash
-            ),
-            gas=400_000,
-        )
-        pid = pool.events.ProposalSubmitted().process_receipt(rcpt, errors=DISCARD)[0]["args"][
-            "proposalId"
-        ]
-        self.measure(
-            "vote", "approve", c0,
-            pool.functions.vote(pid, True), gas=200_000,
-        )
-        self.measure(
-            "vote", "reject", c1,
-            pool.functions.vote(pid, False), gas=200_000,
-        )
+        rcpt = self.measure("submitProposal", "valid (amount<=disp, btc ok)", applicant, pool.functions.submitProposal(DEFAULT_LOAN_AMOUNT, DEFAULT_LOAN_RATE, DEFAULT_LOAN_DURATION, btc_hash), gas=400_000,)
+        pid = pool.events.ProposalSubmitted().process_receipt(rcpt, errors=DISCARD)[0]["args"]["proposalId"]
+        self.measure("vote", "approve", c0, pool.functions.vote(pid, True), gas=200_000,)
+        self.measure("vote", "reject", c1, pool.functions.vote(pid, False), gas=200_000,)
 
     def run_resolve_approved(self, n, deployer, oracle, oracle_op, contribs, applicants):
         """resolveProposal Approved with N contributors (drives loop size)."""
