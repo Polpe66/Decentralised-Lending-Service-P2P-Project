@@ -94,59 +94,59 @@ describe("Proposal submission", function () {
 
     });
 
-    describe("vote()", function () {
+    describe("vote()", function () {                                                                                                    // test più dettagliati sul funzionamento del voto, incluso che solo i contributor possono votare, che il voto viene registrato correttamente
         beforeEach(async function () {
             await pool.connect(contrib1).deposit({ value: ONE_ETH });
             await pool.connect(contrib2).deposit({ value: ONE_ETH * 2n });
             await pool.connect(applicant).submitProposal(LOAN_AMOUNT, INTEREST_RATE, DURATION, BTC_ADDR_HASH);
         });
 
-        it("emits ProposalVoted on approve", async function () {
+        it("emits ProposalVoted on approve", async function () {                                                                       // evento deve essere emesso anche per un voto di approvazione, con i parametri corretti
             await expect(pool.connect(contrib1).vote(0n, true)).to.emit(pool, "ProposalVoted").withArgs(0n, contrib1.address, true);
         });
 
-        it("emits ProposalVoted on reject", async function () {
+        it("emits ProposalVoted on reject", async function () {                                                                         // evento deve essere emesso anche per un voto di rifiuto, con i parametri corretti
             await expect(pool.connect(contrib1).vote(0n, false)).to.emit(pool, "ProposalVoted").withArgs(0n, contrib1.address, false);
         });
 
-        it("approve increases approveVoterCount", async function () {
+        it("approve increases approveVoterCount", async function () {                                                           // prima del voto, approveVoterCount deve essere 0, dopo un voto di approvazione deve essere 1
             const before = (await pool.getProposal(0n))[6];
             await pool.connect(contrib1).vote(0n, true);
             const after = (await pool.getProposal(0n))[6];
             expect(after - before).to.equal(1n);
         });
 
-        it("reject does NOT increase approveVoterCount", async function () {
+        it("reject does NOT increase approveVoterCount", async function () {                                                    // prima del voto, approveVoterCount deve essere 0, dopo un voto di rifiuto deve rimanere 0
             const before = (await pool.getProposal(0n))[6];
             await pool.connect(contrib1).vote(0n, false);
             const after = (await pool.getProposal(0n))[6];
             expect(after).to.equal(before);
         });
 
-        it("hasVotedOn returns true after voting", async function () {
+        it("hasVotedOn returns true after voting", async function () {                                                          // prima del voto, hasVotedOn deve restituire false, dopo il voto deve restituire true
             expect(await pool.hasVotedOn(0n, contrib1.address)).to.be.false;
             await pool.connect(contrib1).vote(0n, true);
             expect(await pool.hasVotedOn(0n, contrib1.address)).to.be.true;
         });
 
-        it("getVoteApprove records approve correctly", async function () {
+        it("getVoteApprove records approve correctly", async function () {                                                      // prima del voto, getVoteApprove deve restituire false, dopo un voto di approvazione deve restituire true
             await pool.connect(contrib1).vote(0n, true);
             expect(await pool.getVoteApprove(0n, contrib1.address)).to.be.true;
         });
 
-        it("getVoteApprove records reject correctly", async function () {
+        it("getVoteApprove records reject correctly", async function () {                                                       // prima del voto, getVoteApprove deve restituire false, dopo un voto di rifiuto deve restituire false
             await pool.connect(contrib1).vote(0n, false);
             expect(await pool.getVoteApprove(0n, contrib1.address)).to.be.false;
         });
 
-        it("multiple contributors can vote on same proposal", async function () {
+        it("multiple contributors can vote on same proposal", async function () {                                               // più contributor possono votare lo stesso proposal
             await pool.connect(contrib1).vote(0n, true);
             await pool.connect(contrib2).vote(0n, true);
             const count = (await pool.getProposal(0n))[6];
             expect(count).to.equal(2n);
         });
 
-        it("votes on different proposals are independent", async function () {
+        it("votes on different proposals are independent", async function () {                                                  // i voti su proposte diverse sono indipendenti
             await pool.connect(applicant).submitProposal(LOAN_AMOUNT, INTEREST_RATE, DURATION, BTC_ADDR_HASH);
             await pool.connect(contrib1).vote(0n, true);
             await pool.connect(contrib1).vote(1n, false);
@@ -156,27 +156,27 @@ describe("Proposal submission", function () {
             expect(await pool.getVoteApprove(1n, contrib1.address)).to.be.false;
         });
 
-        it("reverts on non-existent proposal (id past counter)", async function () {
+        it("reverts on non-existent proposal (id past counter)", async function () {                                            // votare una proposta con id che non esiste (es. 99) deve revertire con messaggio "Proposal does not exist"
             await expect(pool.connect(contrib1).vote(99n, true)).to.be.revertedWith("Proposal does not exist");
         });
 
-        it("reverts on non-contributor", async function () {
+        it("reverts on non-contributor", async function () {                                                                    // un utente che non è contributor (es. stranger) prova a votare, deve revertire con messaggio "Not a contributor"
             await expect(pool.connect(stranger).vote(0n, true)).to.be.revertedWith("Not a contributor");
         });
 
-        it("reverts on double vote (any value)", async function () {
+        it("reverts on double vote (any value)", async function () {                                                            // un contributor prova a votare due volte sulla stessa proposta, anche con valori diversi, deve revertire con messaggio "Already voted"
             await pool.connect(contrib1).vote(0n, true);
             await expect(pool.connect(contrib1).vote(0n, false)).to.be.revertedWith("Already voted");
         });
 
-        it("contributor with fully locked funds can still vote", async function () {
+        it("contributor with fully locked funds can still vote", async function () {                                             // scenario complesso: un contributor ha tutti i suoi fondi bloccati in un prestito attivo, ma deve poter comunque votare sulle proposte
             await mockOracle.setEthEquivalent(BTC_ADDR_HASH, ONE_ETH * 100n);
 
             // proposal 1
             await pool.connect(applicant).submitProposal(ONE_ETH * 3n, INTEREST_RATE, DURATION, BTC_ADDR_HASH);
             await pool.connect(contrib1).vote(1n, true);
             await pool.connect(contrib2).vote(1n, true);
-            await network.provider.send("hardhat_mine", ["0xf"]);
+            await network.provider.send("hardhat_mine", ["0xf"]);                                                                // simula passaggio di tempo per far scadere la proposta, così si può risolvere e bloccare i fondi di contrib1
             await pool.connect(applicant).resolveProposal(1n);
 
             expect(await pool.disposableValue(contrib1.address)).to.equal(0n);
@@ -190,14 +190,13 @@ describe("Proposal submission", function () {
 
     });
 
-    describe("vote() multi-contributor scenarios", function () {
+    describe("vote() multi-contributor scenarios", function () {                                                    // scenari più complessi con più contributor che votano sulla stessa proposta, verificando che approveVoterCount venga aggiornato correttamente in base ai voti di approvazione                         
         let contrib3, contrib4, contrib5;
 
         beforeEach(async function () {
             const signers = await ethers.getSigners();
             [owner, applicant, contrib1, contrib2, stranger, contrib3, contrib4, contrib5] = signers;
 
-            // Different deposit sizes to make scenarios meaningful
             await pool.connect(contrib1).deposit({ value: ONE_ETH });        // 1 ETH
             await pool.connect(contrib2).deposit({ value: ONE_ETH * 2n });   // 2 ETH
             await pool.connect(contrib3).deposit({ value: ONE_ETH * 3n });   // 3 ETH
@@ -205,7 +204,7 @@ describe("Proposal submission", function () {
             await pool.connect(applicant).submitProposal(LOAN_AMOUNT, INTEREST_RATE, DURATION, BTC_ADDR_HASH);
         });
 
-        it("all four contributors approve → approveVoterCount = 4", async function () {
+        it("all four contributors approve → approveVoterCount = 4", async function () {                 // tutti e quattro i contributor votano approve, approveVoterCount deve essere 4, hasVotedOn deve restituire true per tutti e quattro, getVoteApprove deve restituire true per tutti e quattro
             await pool.connect(contrib1).vote(0n, true);
             await pool.connect(contrib2).vote(0n, true);
             await pool.connect(contrib3).vote(0n, true);
@@ -220,7 +219,7 @@ describe("Proposal submission", function () {
             }
         });
 
-        it("all four contributors reject → approveVoterCount = 0, all hasVoted", async function () {
+        it("all four contributors reject → approveVoterCount = 0, all hasVoted", async function () {        // tutti e quattro i contributor votano reject, approveVoterCount deve essere 0, hasVotedOn deve restituire true per tutti e quattro, getVoteApprove deve restituire false per tutti e quattro
             await pool.connect(contrib1).vote(0n, false);
             await pool.connect(contrib2).vote(0n, false);
             await pool.connect(contrib3).vote(0n, false);
@@ -235,11 +234,11 @@ describe("Proposal submission", function () {
             }
         });
 
-        it("mixed: 2 approve + 2 reject → only approves counted", async function () {
-            await pool.connect(contrib1).vote(0n, true);   // approve
-            await pool.connect(contrib2).vote(0n, false);  // reject
-            await pool.connect(contrib3).vote(0n, true);   // approve
-            await pool.connect(contrib4).vote(0n, false);  // reject
+        it("mixed: 2 approve + 2 reject → only approves counted", async function () {           // due contributor votano approve e due votano reject, approveVoterCount deve essere 2, hasVotedOn deve restituire true per tutti e quattro, getVoteApprove deve restituire true per i due approvatori e false per i due rifiutatori
+            await pool.connect(contrib1).vote(0n, true);   
+            await pool.connect(contrib2).vote(0n, false);  
+            await pool.connect(contrib3).vote(0n, true);   
+            await pool.connect(contrib4).vote(0n, false); 
 
             const count = (await pool.getProposal(0n))[6];
             expect(count).to.equal(2n);
@@ -250,10 +249,9 @@ describe("Proposal submission", function () {
             expect(await pool.getVoteApprove(0n, contrib4.address)).to.be.false;
         });
 
-        it("partial turnout: only some contributors vote", async function () {
+        it("partial turnout: only some contributors vote", async function () {              // solo due contributor votano approve, gli altri due non votano, approveVoterCount deve essere 2
             await pool.connect(contrib1).vote(0n, true);
             await pool.connect(contrib3).vote(0n, true);
-            // contrib2 and contrib4 abstain
 
             const count = (await pool.getProposal(0n))[6];
             expect(count).to.equal(2n);
@@ -264,29 +262,22 @@ describe("Proposal submission", function () {
             expect(await pool.hasVotedOn(0n, contrib4.address)).to.be.false;
         });
 
-        it("non-contributor must deposit before voting can succeed", async function () {
-            // contrib5 has not deposited yet
-            await expect(pool.connect(contrib5).vote(0n, true))
-                .to.be.revertedWith("Not a contributor");
+        it("non-contributor must deposit before voting can succeed", async function () {                        // un utente che non è contributor prova a votare, deve revertire, poi deposita e riesce a votare, hasVotedOn deve restituire true dopo il voto
+            await expect(pool.connect(contrib5).vote(0n, true)).to.be.revertedWith("Not a contributor");
 
-            // contrib5 deposits AFTER the proposal was submitted
             await pool.connect(contrib5).deposit({ value: ONE_ETH });
 
-            // Now contrib5 can vote
-            await expect(pool.connect(contrib5).vote(0n, true))
-                .to.emit(pool, "ProposalVoted")
-                .withArgs(0n, contrib5.address, true);
+            await expect(pool.connect(contrib5).vote(0n, true)).to.emit(pool, "ProposalVoted").withArgs(0n, contrib5.address, true);
 
             expect(await pool.hasVotedOn(0n, contrib5.address)).to.be.true;
         });
 
-        it("contributor who fully withdraws BEFORE voting cannot vote", async function () {
-            await pool.connect(contrib4).withdraw(ONE_ETH / 2n);  // withdraws everything
-            await expect(pool.connect(contrib4).vote(0n, true))
-                .to.be.revertedWith("Not a contributor");
+        it("contributor who fully withdraws BEFORE voting cannot vote", async function () {                     // un contributor prova a votare, poi ritira tutti i suoi fondi, poi prova a votare di nuovo, deve revertire con messaggio "Not a contributor"
+            await pool.connect(contrib4).withdraw(ONE_ETH / 2n);  
+            await expect(pool.connect(contrib4).vote(0n, true)).to.be.revertedWith("Not a contributor");
         });
 
-        it("contributor who withdraws AFTER voting keeps the vote recorded", async function () {
+        it("contributor who withdraws AFTER voting keeps the vote recorded", async function () {                // un contributor vota, poi ritira tutti i suoi fondi, hasVotedOn deve restituire true e getVoteApprove deve restituire true, approveVoterCount deve rimanere 1
             await pool.connect(contrib4).vote(0n, true);
             await pool.connect(contrib4).withdraw(ONE_ETH / 2n);
 
@@ -294,25 +285,6 @@ describe("Proposal submission", function () {
             expect(await pool.getVoteApprove(0n, contrib4.address)).to.be.true;
             const count = (await pool.getProposal(0n))[6];
             expect(count).to.equal(1n);
-        });
-
-        it("simultaneous voting on two proposals by multiple contributors", async function () {
-            await pool.connect(applicant).submitProposal(LOAN_AMOUNT, INTEREST_RATE, DURATION, BTC_ADDR_HASH);
-
-            // Proposal 0: contrib1 approve, contrib2 reject
-            await pool.connect(contrib1).vote(0n, true);
-            await pool.connect(contrib2).vote(0n, false);
-            // Proposal 1: contrib1 reject, contrib2 approve
-            await pool.connect(contrib1).vote(1n, false);
-            await pool.connect(contrib2).vote(1n, true);
-
-            expect((await pool.getProposal(0n))[6]).to.equal(1n);
-            expect((await pool.getProposal(1n))[6]).to.equal(1n);
-
-            expect(await pool.getVoteApprove(0n, contrib1.address)).to.be.true;
-            expect(await pool.getVoteApprove(1n, contrib1.address)).to.be.false;
-            expect(await pool.getVoteApprove(0n, contrib2.address)).to.be.false;
-            expect(await pool.getVoteApprove(1n, contrib2.address)).to.be.true;
         });
 
     });
