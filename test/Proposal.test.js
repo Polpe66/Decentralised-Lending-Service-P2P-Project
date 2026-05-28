@@ -5,14 +5,14 @@ describe("Proposal submission", function () {
     let pool, mockOracle;
     let owner, applicant, contrib1, contrib2, stranger;
 
-    const BTC_ADDR_HASH = ethers.keccak256(ethers.toUtf8Bytes("1A1zP1eP5QGefi2DMPTfTL5SLmv7Divf"));
+    const BTC_ADDR_HASH = ethers.keccak256(ethers.toUtf8Bytes("1A1zP1eP5QGefi2DMPTfTL5SLmv7Divf"));                 // indirizzo fittizio, non usato on-chain ma serve per testare la memorizzazione del campo btcAddressHash
     const LOAN_AMOUNT   = ethers.parseEther("0.5");
     const INTEREST_RATE = 10n;   // 10%
     const DURATION      = 100n;  // blocks
     const ONE_ETH       = ethers.parseEther("1");
 
     beforeEach(async function () {
-        [owner, applicant, contrib1, contrib2, stranger] = await ethers.getSigners();
+        [owner, applicant, contrib1, contrib2, stranger] = await ethers.getSigners();                               
 
         const MockOracle = await ethers.getContractFactory("MockBitcoinOracle");
         mockOracle = await MockOracle.deploy();
@@ -22,15 +22,13 @@ describe("Proposal submission", function () {
     });
 
     describe("submitProposal()", function () {
-        it("emits ProposalSubmitted with id 0", async function () {
-            await expect(
-                pool.connect(applicant).submitProposal(LOAN_AMOUNT, INTEREST_RATE, DURATION, BTC_ADDR_HASH)
-            )
+        it("emits ProposalSubmitted with id 0", async function () {                                                                         // prima proposta deve avere id 0
+            await expect(pool.connect(applicant).submitProposal(LOAN_AMOUNT, INTEREST_RATE, DURATION, BTC_ADDR_HASH))                       // applicant submitta una proposta con i parametri definiti, evento deve essere emesso con id 0, address dell'applicant e amount corretto
                 .to.emit(pool, "ProposalSubmitted")
                 .withArgs(0n, applicant.address, LOAN_AMOUNT);
         });
 
-        it("increments proposalCount", async function () {
+        it("increments proposalCount", async function () {                                                                                  // proposalCount deve incrementare ad ogni submit, partendo da 0
             expect(await pool.proposalCount()).to.equal(0n);
             await pool.connect(applicant).submitProposal(LOAN_AMOUNT, INTEREST_RATE, DURATION, BTC_ADDR_HASH);
             expect(await pool.proposalCount()).to.equal(1n);
@@ -38,7 +36,7 @@ describe("Proposal submission", function () {
             expect(await pool.proposalCount()).to.equal(2n);
         });
 
-        it("stores all proposal fields", async function () {
+        it("stores all proposal fields", async function () {                                                                                // dopo submit, getProposal(0) deve restituire i campi corretti
             const tx = await pool.connect(applicant).submitProposal(LOAN_AMOUNT, INTEREST_RATE, DURATION, BTC_ADDR_HASH);
             const receipt = await tx.wait();
             const submittedAt = BigInt(receipt.blockNumber);
@@ -51,50 +49,36 @@ describe("Proposal submission", function () {
             expect(hash).to.equal(BTC_ADDR_HASH);
             expect(block).to.equal(submittedAt);
             expect(approveCount).to.equal(0n);
-            expect(status).to.equal(0n); // ProposalStatus.Active
+            expect(status).to.equal(0n);
         });
 
-        it("any user can submit (no contributor requirement)", async function () {
-            await expect(
-                pool.connect(stranger).submitProposal(LOAN_AMOUNT, INTEREST_RATE, DURATION, BTC_ADDR_HASH)
-            ).to.emit(pool, "ProposalSubmitted");
+        it("any user can submit (no contributor requirement)", async function () {                                                                          // anche un utente che non è contributor può submittere una proposta, evento deve essere emesso correttamente
+            await expect(pool.connect(stranger).submitProposal(LOAN_AMOUNT, INTEREST_RATE, DURATION, BTC_ADDR_HASH)).to.emit(pool, "ProposalSubmitted");
         });
 
-        it("accepts interest rate boundaries 1 and 100", async function () {
-            await expect(
-                pool.connect(applicant).submitProposal(LOAN_AMOUNT, 1n, DURATION, BTC_ADDR_HASH)
-            ).to.emit(pool, "ProposalSubmitted");
+        it("accepts interest rate boundaries 1 and 100", async function () {                                                                                
+            await expect(pool.connect(applicant).submitProposal(LOAN_AMOUNT, 1n, DURATION, BTC_ADDR_HASH)).to.emit(pool, "ProposalSubmitted");
 
-            await expect(
-                pool.connect(applicant).submitProposal(LOAN_AMOUNT, 100n, DURATION, BTC_ADDR_HASH)
-            ).to.emit(pool, "ProposalSubmitted");
+            await expect(pool.connect(applicant).submitProposal(LOAN_AMOUNT, 100n, DURATION, BTC_ADDR_HASH)).to.emit(pool, "ProposalSubmitted");
         });
 
-        it("reverts on zero amount", async function () {
-            await expect(
-                pool.connect(applicant).submitProposal(0n, INTEREST_RATE, DURATION, BTC_ADDR_HASH)
-            ).to.be.revertedWith("Zero amount");
+        it("reverts on zero amount", async function () {                                                                                                
+            await expect(pool.connect(applicant).submitProposal(0n, INTEREST_RATE, DURATION, BTC_ADDR_HASH)).to.be.revertedWith("Zero amount");
         });
 
         it("reverts on interest rate 0", async function () {
-            await expect(
-                pool.connect(applicant).submitProposal(LOAN_AMOUNT, 0n, DURATION, BTC_ADDR_HASH)
-            ).to.be.revertedWith("Rate out of range");
+            await expect(pool.connect(applicant).submitProposal(LOAN_AMOUNT, 0n, DURATION, BTC_ADDR_HASH)).to.be.revertedWith("Rate out of range");
         });
 
         it("reverts on interest rate > 100", async function () {
-            await expect(
-                pool.connect(applicant).submitProposal(LOAN_AMOUNT, 101n, DURATION, BTC_ADDR_HASH)
-            ).to.be.revertedWith("Rate out of range");
+            await expect(pool.connect(applicant).submitProposal(LOAN_AMOUNT, 101n, DURATION, BTC_ADDR_HASH)).to.be.revertedWith("Rate out of range");
         });
 
         it("reverts on zero duration", async function () {
-            await expect(
-                pool.connect(applicant).submitProposal(LOAN_AMOUNT, INTEREST_RATE, 0n, BTC_ADDR_HASH)
-            ).to.be.revertedWith("Zero duration");
+            await expect(pool.connect(applicant).submitProposal(LOAN_AMOUNT, INTEREST_RATE, 0n, BTC_ADDR_HASH)).to.be.revertedWith("Zero duration");
         });
 
-        it("two distinct proposals stored independently", async function () {
+        it("two distinct proposals stored independently", async function () {                                                   // submit due proposte da due utenti diversi, verificare che i campi di entrambe siano memorizzati correttamente e indipendentemente
             await pool.connect(applicant).submitProposal(LOAN_AMOUNT, INTEREST_RATE, DURATION, BTC_ADDR_HASH);
             await pool.connect(stranger).submitProposal(LOAN_AMOUNT * 2n, 25n, 200n, BTC_ADDR_HASH);
 
@@ -108,7 +92,7 @@ describe("Proposal submission", function () {
             expect(p1[2]).to.equal(25n);
         });
 
-        it("gas cost", async function () {
+        it("gas cost", async function () {                                                                                      // misurare il gas cost di submitProposal
             const tx = await pool.connect(applicant).submitProposal(LOAN_AMOUNT, INTEREST_RATE, DURATION, BTC_ADDR_HASH);
             const receipt = await tx.wait();
             console.log(`\n    Gas submitProposal(): ${receipt.gasUsed}`);
@@ -123,15 +107,11 @@ describe("Proposal submission", function () {
         });
 
         it("emits ProposalVoted on approve", async function () {
-            await expect(pool.connect(contrib1).vote(0n, true))
-                .to.emit(pool, "ProposalVoted")
-                .withArgs(0n, contrib1.address, true);
+            await expect(pool.connect(contrib1).vote(0n, true)).to.emit(pool, "ProposalVoted").withArgs(0n, contrib1.address, true);
         });
 
         it("emits ProposalVoted on reject", async function () {
-            await expect(pool.connect(contrib1).vote(0n, false))
-                .to.emit(pool, "ProposalVoted")
-                .withArgs(0n, contrib1.address, false);
+            await expect(pool.connect(contrib1).vote(0n, false)).to.emit(pool, "ProposalVoted").withArgs(0n, contrib1.address, false);
         });
 
         it("approve increases approveVoterCount", async function () {
@@ -182,27 +162,22 @@ describe("Proposal submission", function () {
         });
 
         it("reverts on non-existent proposal (id past counter)", async function () {
-            await expect(pool.connect(contrib1).vote(99n, true))
-                .to.be.revertedWith("Proposal does not exist");
+            await expect(pool.connect(contrib1).vote(99n, true)).to.be.revertedWith("Proposal does not exist");
         });
 
         it("reverts on non-contributor", async function () {
-            await expect(pool.connect(stranger).vote(0n, true))
-                .to.be.revertedWith("Not a contributor");
+            await expect(pool.connect(stranger).vote(0n, true)).to.be.revertedWith("Not a contributor");
         });
 
         it("reverts on double vote (any value)", async function () {
             await pool.connect(contrib1).vote(0n, true);
-            await expect(pool.connect(contrib1).vote(0n, false))
-                .to.be.revertedWith("Already voted");
+            await expect(pool.connect(contrib1).vote(0n, false)).to.be.revertedWith("Already voted");
         });
 
         it("contributor with fully locked funds can still vote", async function () {
-            // Lock 100% of contrib1+contrib2 deposits via an approved loan,
-            // then verify they can still vote on a fresh proposal.
             await mockOracle.setEthEquivalent(BTC_ADDR_HASH, ONE_ETH * 100n);
 
-            // proposal 1: full pool (3 ETH) → shares cover entire deposits
+            // proposal 1
             await pool.connect(applicant).submitProposal(ONE_ETH * 3n, INTEREST_RATE, DURATION, BTC_ADDR_HASH);
             await pool.connect(contrib1).vote(1n, true);
             await pool.connect(contrib2).vote(1n, true);
@@ -212,11 +187,9 @@ describe("Proposal submission", function () {
             expect(await pool.disposableValue(contrib1.address)).to.equal(0n);
             expect(await pool.isContributor(contrib1.address)).to.be.true;
 
-            // proposal 2: contrib1 with disposable=0 votes
+            // proposal 2
             await pool.connect(applicant).submitProposal(LOAN_AMOUNT, INTEREST_RATE, DURATION, BTC_ADDR_HASH);
-            await expect(pool.connect(contrib1).vote(2n, true))
-                .to.emit(pool, "ProposalVoted")
-                .withArgs(2n, contrib1.address, true);
+            await expect(pool.connect(contrib1).vote(2n, true)).to.emit(pool, "ProposalVoted").withArgs(2n, contrib1.address, true);
             expect(await pool.hasVotedOn(2n, contrib1.address)).to.be.true;
         });
 
@@ -237,7 +210,6 @@ describe("Proposal submission", function () {
         let contrib3, contrib4, contrib5;
 
         beforeEach(async function () {
-            // re-fetch signers including more contributors
             const signers = await ethers.getSigners();
             [owner, applicant, contrib1, contrib2, stranger, contrib3, contrib4, contrib5] = signers;
 
