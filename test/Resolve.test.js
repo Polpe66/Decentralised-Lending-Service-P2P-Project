@@ -44,13 +44,13 @@ describe("Proposal resolution", function () {
             await expect(pool.connect(stranger).resolveProposal(0n)).to.be.revertedWith("Not applicant");
         });
 
-        it("reverts immediately after submit (voting period not over)", async function () {                             // anche se c'è un voto favorevole, non si può risolvere finché non sono passati almeno 10 blocchi
+        it("reverts immediately after submit (voting period not over)", async function () {                             // anche se c'è un voto favorevole, non si può risolvere finché non sono passati almeno 12 blocchi
             await pool.connect(contrib1).deposit({ value: ONE_ETH * 3n });
             await pool.connect(applicant).submitProposal(LOAN_AMOUNT, INTEREST_RATE, DURATION, BTC_ADDR_HASH);
             await expect(pool.connect(applicant).resolveProposal(0n)).to.be.revertedWith("Voting period not over");
         });
 
-        it("succeeds after voting period elapses", async function () {                                                  // precondizoni rispettate -> risoluzione va a buon fine
+        it("succeeds after voting period elapses", async function () {                                                  // precondizioni rispettate -> risoluzione va a buon fine
             await pool.connect(contrib1).deposit({ value: ONE_ETH * 3n });
             await pool.connect(applicant).submitProposal(LOAN_AMOUNT, INTEREST_RATE, DURATION, BTC_ADDR_HASH);
             await pool.connect(contrib1).vote(0n, true);
@@ -67,7 +67,7 @@ describe("Proposal resolution", function () {
             await expect(pool.connect(applicant).resolveProposal(0n)).to.be.revertedWith("Proposal not active");
         });
 
-        it("strict boundary: voting period check uses strict >", async function () {                                    // se sono passati esattamente 10 blocchi, la risoluzione è permessa
+        it("strict boundary: voting period check uses strict >", async function () {                                    // a esattamente 12 blocchi dopo submit la resolve revertisce (serve strict >, quindi block.number deve essere submittedBlock + 13 o oltre)
             await pool.connect(contrib1).deposit({ value: ONE_ETH * 3n });
             const tx = await pool.connect(applicant).submitProposal(LOAN_AMOUNT, INTEREST_RATE, DURATION, BTC_ADDR_HASH);
             const receipt = await tx.wait();
@@ -83,7 +83,7 @@ describe("Proposal resolution", function () {
 
     // pool insufficiente -> early rejection senza nemmeno contare i voti
 
-    describe("early rejection — pool insufficient", function () {                                               // questi test verificano che se il totale disponibile è inferiore all'importo richiesto, la proposta viene respinta immediatamente senza contare i voti
+    describe("early rejection - pool insufficient", function () {                                               // questi test verificano che se il totale disponibile è inferiore all'importo richiesto, la proposta viene respinta immediatamente senza contare i voti
         it("rejects when totalDisposable < amount", async function () {
             await pool.connect(contrib1).deposit({ value: ONE_ETH }); 
             await pool.connect(applicant).submitProposal(LOAN_AMOUNT, INTEREST_RATE, DURATION, BTC_ADDR_HASH);
@@ -119,7 +119,7 @@ describe("Proposal resolution", function () {
             await pool.connect(applicant).submitProposal(LOAN_AMOUNT, INTEREST_RATE, DURATION, BTC_ADDR_HASH);
             await pool.connect(contrib1).vote(0n, true);
 
-            await mockOracle.setEthEquivalent(BTC_ADDR_HASH, ONE_ETH);                              // oracle riporta 1 ETH di equivalente, ma la proposta richiede 2 ETH -> pool insufficiente -> rifiuto immediato senza contare i voti
+            await mockOracle.setEthEquivalent(BTC_ADDR_HASH, ONE_ETH);                              // oracle riporta 1 ETH equivalente BTC, ma la proposta richiede 2 ETH -> liquidità BTC insufficiente -> rifiuto immediato senza contare i voti (pool a 3 ETH OK)
 
             await mineBlocks(15);
             await expect(pool.connect(applicant).resolveProposal(0n)).to.emit(pool, "ProposalRejected").withArgs(0n);
@@ -134,7 +134,7 @@ describe("Proposal resolution", function () {
             await expect(pool.connect(applicant).resolveProposal(0n)).to.emit(pool, "ProposalRejected").withArgs(0n);
         });
 
-        it("passes liquidity check when oracle ETH equiv == amount ", async function () {                       // se l'oracolo riporta un equivalente in ETH del collaterale BTC esattamente pari all'importo richiesto
+        it("passes liquidity check when oracle ETH equiv == amount", async function () {                       // boundary inclusivo: se l'oracolo riporta esattamente l'importo richiesto (check `<`, non `<=`), la proposta passa
             await pool.connect(contrib1).deposit({ value: ONE_ETH * 3n });
             await pool.connect(applicant).submitProposal(LOAN_AMOUNT, INTEREST_RATE, DURATION, BTC_ADDR_HASH);
             await pool.connect(contrib1).vote(0n, true);
@@ -165,7 +165,7 @@ describe("Proposal resolution", function () {
             expect(p[7]).to.equal(1n); // approvato
         });
 
-        it("tie 50/50 -> Rejected", async function () {         // deve essere 51 
+        it("tie 50/50 -> Rejected", async function () {         // quorum richiede strict > 50% (weightedYes*2 > totalDisp); tie va a Rejected
             await pool.connect(contrib3).vote(0n, true);
             await mineBlocks(15);
             await expect(pool.connect(applicant).resolveProposal(0n)).to.emit(pool, "ProposalRejected").withArgs(0n);
@@ -178,7 +178,7 @@ describe("Proposal resolution", function () {
             await expect(pool.connect(applicant).resolveProposal(0n)).to.emit(pool, "ProposalRejected").withArgs(0n);
         });
 
-        it("no votes -> all implicit NO → Rejected", async function () {
+        it("no votes -> all implicit NO -> Rejected", async function () {
             await mineBlocks(15);
             await expect(pool.connect(applicant).resolveProposal(0n)).to.emit(pool, "ProposalRejected").withArgs(0n);
         });
@@ -210,7 +210,7 @@ describe("Proposal resolution", function () {
             await pool.connect(contrib3).vote(0n, true);
         });
 
-        const SHARE_1 = 333333333333333333n;                                                // conto proporzionale
+        const SHARE_1 = 333333333333333333n;                                                // share_i = floor(LOAN_AMOUNT(2e18) * disp_i / totalDisp(6e18)) per disp_i = 1, 2, 3 ETH; somma = 1.999...999 ETH (1 wei perso per floor)
         const SHARE_2 = 666666666666666666n;
         const SHARE_3 = 1000000000000000000n;
         const LOANED  = SHARE_1 + SHARE_2 + SHARE_3;
@@ -229,7 +229,7 @@ describe("Proposal resolution", function () {
             expect(await pool.totalLocked()).to.equal(LOANED);
         });
 
-        it("loanedAmount in event <= proposal.amount (floor leftover deducted)", async function () {                                             // l'importo effettivamente prestato (loanedAmount) è pari alla somma dei lockedValue
+        it("loanedAmount in event <= proposal.amount (floor leftover deducted)", async function () {                                             // loanedAmount = somma share post-floor; strettamente minore dell'amount richiesto per perdita wei da floor (1 wei in questo setup)
             await mineBlocks(15);
             await expect(pool.connect(applicant).resolveProposal(0n)).to.emit(pool, "ProposalApproved").withArgs(0n, anyValue, LOANED);
             expect(LOANED).to.be.lessThan(LOAN_AMOUNT);
@@ -251,7 +251,7 @@ describe("Proposal resolution", function () {
             expect(before - after).to.equal(LOANED);
         });
 
-        it("contributor with share floor == 0 is skipped", async function () {                          // se un contributore ha una quota così piccola che il calcolo proporzionale restituisce 0 (floor), non viene bloccato nulla ma la sua partecipazione al voto è comunque conteggiata
+        it("contributor with share floor == 0 is skipped", async function () {                          // se un contributore ha una quota così piccola che il calcolo proporzionale restituisce 0 (floor), non viene bloccato nulla (skip nel loop di resolve)
             const MockOracle = await ethers.getContractFactory("MockBitcoinOracle");
             const oracle2 = await MockOracle.deploy();
             await oracle2.setEthEquivalent(BTC_ADDR_HASH, MANY_BTC_BAL);
@@ -273,7 +273,7 @@ describe("Proposal resolution", function () {
             expect(await pool2.lockedValue(contrib1.address)).to.be.gt(0n);
         });
 
-        it("disposable=0 contributor is skipped (still in list but no lock)", async function () {       // se un contributore ha una disponibilità pari a 0 al momento della risoluzione, non viene bloccato nulla ma la sua partecipazione al voto è comunque conteggiata
+        it("disposable=0 contributor is skipped (still in list but no lock)", async function () {       // se un contributore ha disponibilità 0 al momento della resolve (resta in _contributorList ma con deposits=0), non viene bloccato nulla (skip nel loop)
             await pool.connect(contrib4).deposit({ value: ONE_ETH });
             await pool.connect(contrib4).withdraw(ONE_ETH);
             await mineBlocks(15);
