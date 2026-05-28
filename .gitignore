@@ -24,3 +24,6 @@ chaindata/
 ## OS
 .DS_Store
 Thumbs.db
+
+# inline vscode settings
+.vscode/settings.json

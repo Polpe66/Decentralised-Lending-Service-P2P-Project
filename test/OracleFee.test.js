@@ -1,16 +1,9 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
-// Spec §1.3: MIN_ORACLE_FEE = gas cost of BitcoinOracle.update() × 0.1 gwei.
-// Worst case for update() = first write to a brand-new btcAddressHash with
-// non-zero satoshi value → SSTORE on a zero slot (Gsset = 20_000) for the
-// balances mapping. This is the case the spec-formula must cover, because the
-// off-chain oracle pays for it on every new address.
-//
-// 0.1 gwei in wei = 1e8 wei.
 const GWEI_TENTH_WEI = 100_000_000n;
 
-describe("BitcoinOracle — MIN_ORACLE_FEE formula", function () {
+describe("BitcoinOracle - MIN_ORACLE_FEE formula", function () {
     let oracle;
     let operator;
 
@@ -20,13 +13,11 @@ describe("BitcoinOracle — MIN_ORACLE_FEE formula", function () {
         oracle = await BitcoinOracle.deploy();
     });
 
-    it("hardcoded MIN_ORACLE_FEE matches measured gas × 0.1 gwei", async function () {
-        const freshHash = await oracle.hashBtcAddress(
-            "bc1qworstcase00000000000000000000000000000"
-        );
-        const satoshiBalance = 12345n; // any non-zero value forces SSTORE on zero slot
+    it("hardcoded MIN_ORACLE_FEE matches measured gas × 0.1 gwei", async function () {                  // verifica che la costante MIN_ORACLE_FEE definita nel contratto corrisponda al costo in gas misurato per una chiamata alla funzione update() moltiplicato per 0.1 gwei
+        const freshHash = await oracle.hashBtcAddress("bc1qworstcase00000000000000000000000000000");    // hash arbitrario per test, non influisce sul gas usato
+        const satoshiBalance = 12345n;                                                                  // valore arbitrario per test, non influisce sul gas usato
 
-        const tx = await oracle.connect(operator).update(freshHash, satoshiBalance);
+        const tx = await oracle.connect(operator).update(freshHash, satoshiBalance);                    // chiamata alla funzione update() per misurare il gas usato
         const receipt = await tx.wait();
         const gasUsed = receipt.gasUsed;
 

