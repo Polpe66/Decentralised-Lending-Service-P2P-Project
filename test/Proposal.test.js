@@ -92,11 +92,6 @@ describe("Proposal submission", function () {
             expect(p1[2]).to.equal(25n);
         });
 
-        it("gas cost", async function () {                                                                                      // misurare il gas cost di submitProposal
-            const tx = await pool.connect(applicant).submitProposal(LOAN_AMOUNT, INTEREST_RATE, DURATION, BTC_ADDR_HASH);
-            const receipt = await tx.wait();
-            console.log(`\n    Gas submitProposal(): ${receipt.gasUsed}`);
-        });
     });
 
     describe("vote()", function () {
@@ -193,17 +188,6 @@ describe("Proposal submission", function () {
             expect(await pool.hasVotedOn(2n, contrib1.address)).to.be.true;
         });
 
-        it("gas cost approve", async function () {
-            const tx = await pool.connect(contrib1).vote(0n, true);
-            const receipt = await tx.wait();
-            console.log(`\n    Gas vote(approve): ${receipt.gasUsed}`);
-        });
-
-        it("gas cost reject", async function () {
-            const tx = await pool.connect(contrib1).vote(0n, false);
-            const receipt = await tx.wait();
-            console.log(`\n    Gas vote(reject): ${receipt.gasUsed}`);
-        });
     });
 
     describe("vote() multi-contributor scenarios", function () {
@@ -331,14 +315,5 @@ describe("Proposal submission", function () {
             expect(await pool.getVoteApprove(1n, contrib2.address)).to.be.true;
         });
 
-        it("gas cost: 4 contributors each cast approve", async function () {
-            const txs = [];
-            for (const c of [contrib1, contrib2, contrib3, contrib4]) {
-                txs.push(await pool.connect(c).vote(0n, true));
-            }
-            const receipts = await Promise.all(txs.map(t => t.wait()));
-            const total = receipts.reduce((acc, r) => acc + r.gasUsed, 0n);
-            console.log(`\n    Gas vote(approve) x4 cumulative: ${total} (avg ${total / 4n})`);
-        });
     });
 });
