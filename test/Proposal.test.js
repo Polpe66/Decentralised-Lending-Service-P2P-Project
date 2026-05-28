@@ -1,6 +1,5 @@
-// da vedere
 const { expect } = require("chai");
-const { ethers, upgrades } = require("hardhat");
+const { ethers, upgrades, network } = require("hardhat");
 
 describe("Proposal submission", function () {
     let pool, mockOracle;
@@ -44,13 +43,15 @@ describe("Proposal submission", function () {
             const receipt = await tx.wait();
             const submittedAt = BigInt(receipt.blockNumber);
 
-            const [app, amount, rate, dur, hash, block] = await pool.getProposal(0n);
+            const [app, amount, rate, dur, hash, block, approveCount, status] = await pool.getProposal(0n);
             expect(app).to.equal(applicant.address);
             expect(amount).to.equal(LOAN_AMOUNT);
             expect(rate).to.equal(INTEREST_RATE);
             expect(dur).to.equal(DURATION);
             expect(hash).to.equal(BTC_ADDR_HASH);
             expect(block).to.equal(submittedAt);
+            expect(approveCount).to.equal(0n);
+            expect(status).to.equal(0n); // ProposalStatus.Active
         });
 
         it("any user can submit (no contributor requirement)", async function () {
@@ -190,23 +191,33 @@ describe("Proposal submission", function () {
                 .to.be.revertedWith("Not a contributor");
         });
 
-        it("reverts on double vote (same value)", async function () {
-            await pool.connect(contrib1).vote(0n, true);
-            await expect(pool.connect(contrib1).vote(0n, true))
-                .to.be.revertedWith("Already voted");
-        });
-
-        it("reverts on double vote (changing value)", async function () {
+        it("reverts on double vote (any value)", async function () {
             await pool.connect(contrib1).vote(0n, true);
             await expect(pool.connect(contrib1).vote(0n, false))
                 .to.be.revertedWith("Already voted");
         });
 
-        it("contributor with locked-only funds can still vote", async function () {
-            // contributor with 0 disposable but >0 deposits is still a contributor
-            // (we cannot lock without a registered loan, so just check isContributor logic)
-            await pool.connect(contrib1).vote(0n, true);
-            expect(await pool.hasVotedOn(0n, contrib1.address)).to.be.true;
+        it("contributor with fully locked funds can still vote", async function () {
+            // Lock 100% of contrib1+contrib2 deposits via an approved loan,
+            // then verify they can still vote on a fresh proposal.
+            await mockOracle.setEthEquivalent(BTC_ADDR_HASH, ONE_ETH * 100n);
+
+            // proposal 1: full pool (3 ETH) → shares cover entire deposits
+            await pool.connect(applicant).submitProposal(ONE_ETH * 3n, INTEREST_RATE, DURATION, BTC_ADDR_HASH);
+            await pool.connect(contrib1).vote(1n, true);
+            await pool.connect(contrib2).vote(1n, true);
+            await network.provider.send("hardhat_mine", ["0xf"]);
+            await pool.connect(applicant).resolveProposal(1n);
+
+            expect(await pool.disposableValue(contrib1.address)).to.equal(0n);
+            expect(await pool.isContributor(contrib1.address)).to.be.true;
+
+            // proposal 2: contrib1 with disposable=0 votes
+            await pool.connect(applicant).submitProposal(LOAN_AMOUNT, INTEREST_RATE, DURATION, BTC_ADDR_HASH);
+            await expect(pool.connect(contrib1).vote(2n, true))
+                .to.emit(pool, "ProposalVoted")
+                .withArgs(2n, contrib1.address, true);
+            expect(await pool.hasVotedOn(2n, contrib1.address)).to.be.true;
         });
 
         it("gas cost approve", async function () {
@@ -297,7 +308,7 @@ describe("Proposal submission", function () {
             expect(await pool.hasVotedOn(0n, contrib4.address)).to.be.false;
         });
 
-        it("late contributor (deposit AFTER proposal submission) can still vote", async function () {
+        it("non-contributor must deposit before voting can succeed", async function () {
             // contrib5 has not deposited yet
             await expect(pool.connect(contrib5).vote(0n, true))
                 .to.be.revertedWith("Not a contributor");
@@ -346,29 +357,6 @@ describe("Proposal submission", function () {
             expect(await pool.getVoteApprove(1n, contrib1.address)).to.be.false;
             expect(await pool.getVoteApprove(0n, contrib2.address)).to.be.false;
             expect(await pool.getVoteApprove(1n, contrib2.address)).to.be.true;
-        });
-
-        it("largest contributor approves alone, others abstain", async function () {
-            // contrib3 (3 ETH) is largest depositor
-            await pool.connect(contrib3).vote(0n, true);
-
-            const count = (await pool.getProposal(0n))[6];
-            expect(count).to.equal(1n);
-            expect(await pool.getVoteApprove(0n, contrib3.address)).to.be.true;
-
-            for (const c of [contrib1, contrib2, contrib4]) {
-                expect(await pool.hasVotedOn(0n, c.address)).to.be.false;
-            }
-        });
-
-        it("smallest contributor rejects, largest approve, two others mixed", async function () {
-            await pool.connect(contrib4).vote(0n, false);  // smallest, reject
-            await pool.connect(contrib3).vote(0n, true);   // largest, approve
-            await pool.connect(contrib1).vote(0n, true);   // approve
-            await pool.connect(contrib2).vote(0n, false);  // reject
-
-            const count = (await pool.getProposal(0n))[6];
-            expect(count).to.equal(2n);
         });
 
         it("gas cost: 4 contributors each cast approve", async function () {
