@@ -1,4 +1,3 @@
-//da vedere
 const { expect } = require("chai");
 const { ethers, upgrades, network } = require("hardhat");
 const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
@@ -175,9 +174,8 @@ describe("Proposal resolution", function () {
             await pool.connect(applicant).submitProposal(LOAN_AMOUNT, INTEREST_RATE, DURATION, BTC_ADDR_HASH);
         });
 
-        it("majority YES → Approved (c3 alone: 3/6 > 0 + tie-breaker via implicit no)", async function () {
-            // c3=3 yes, c1+c2=3 implicit no → tie 3=3 → rejected (per tie rule)
-            // To get majority: c2+c3 = 5 yes, c1 = 1 implicit no → yes>no
+        it("majority YES (c2+c3=5/6) → Approved", async function () {
+            // weightedYes = 2+3 = 5 ETH, totalDisp = 6 ETH, weightedYes*2 = 10 > 6 → Approved
             await pool.connect(contrib2).vote(0n, true);
             await pool.connect(contrib3).vote(0n, true);
             await mineBlocks(15);
@@ -374,29 +372,4 @@ describe("Proposal resolution", function () {
         });
     });
 
-    // ── Gas cost ──────────────────────────────────────────────────────────────
-
-    describe("gas cost", function () {
-        it("approved (3 contributors)", async function () {
-            await pool.connect(contrib1).deposit({ value: ONE_ETH });
-            await pool.connect(contrib2).deposit({ value: ONE_ETH * 2n });
-            await pool.connect(contrib3).deposit({ value: ONE_ETH * 3n });
-            await pool.connect(applicant).submitProposal(LOAN_AMOUNT, INTEREST_RATE, DURATION, BTC_ADDR_HASH);
-            await pool.connect(contrib3).vote(0n, true);
-            await pool.connect(contrib2).vote(0n, true);
-            await mineBlocks(15);
-            const tx = await pool.connect(applicant).resolveProposal(0n);
-            const receipt = await tx.wait();
-            console.log(`\n    Gas resolveProposal (approved, 3 contributors): ${receipt.gasUsed}`);
-        });
-
-        it("rejected early (pool insufficient)", async function () {
-            await pool.connect(contrib1).deposit({ value: ONE_ETH });
-            await pool.connect(applicant).submitProposal(LOAN_AMOUNT, INTEREST_RATE, DURATION, BTC_ADDR_HASH);
-            await mineBlocks(15);
-            const tx = await pool.connect(applicant).resolveProposal(0n);
-            const receipt = await tx.wait();
-            console.log(`\n    Gas resolveProposal (rejected, pool low): ${receipt.gasUsed}`);
-        });
-    });
 });

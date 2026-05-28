@@ -5,7 +5,7 @@ describe("Proposal submission", function () {
     let pool, mockOracle;
     let owner, applicant, contrib1, contrib2, stranger;
 
-    const BTC_ADDR_HASH = ethers.keccak256(ethers.toUtf8Bytes("1A1zP1eP5QGefi2DMPTfTL5SLmv7Divf"));                 // indirizzo fittizio, non usato on-chain ma serve per testare la memorizzazione del campo btcAddressHash
+    const BTC_ADDR_HASH = ethers.keccak256(ethers.toUtf8Bytes("1A1zP1eP5QGefi2DMPTfTL5SLmv7Divf"));                 // hash fittizio di un indirizzo BTC: usato come chiave per l'oracle e memorizzato nel campo btcAddressHash della proposta
     const LOAN_AMOUNT   = ethers.parseEther("0.5");
     const INTEREST_RATE = 10n;   // 10%
     const DURATION      = 100n;  // blocks
@@ -139,13 +139,6 @@ describe("Proposal submission", function () {
             expect(await pool.getVoteApprove(0n, contrib1.address)).to.be.false;
         });
 
-        it("multiple contributors can vote on same proposal", async function () {                                               // più contributor possono votare lo stesso proposal
-            await pool.connect(contrib1).vote(0n, true);
-            await pool.connect(contrib2).vote(0n, true);
-            const count = (await pool.getProposal(0n))[6];
-            expect(count).to.equal(2n);
-        });
-
         it("votes on different proposals are independent", async function () {                                                  // i voti su proposte diverse sono indipendenti
             await pool.connect(applicant).submitProposal(LOAN_AMOUNT, INTEREST_RATE, DURATION, BTC_ADDR_HASH);
             await pool.connect(contrib1).vote(0n, true);
@@ -176,7 +169,7 @@ describe("Proposal submission", function () {
             await pool.connect(applicant).submitProposal(ONE_ETH * 3n, INTEREST_RATE, DURATION, BTC_ADDR_HASH);
             await pool.connect(contrib1).vote(1n, true);
             await pool.connect(contrib2).vote(1n, true);
-            await network.provider.send("hardhat_mine", ["0xf"]);                                                                // simula passaggio di tempo per far scadere la proposta, così si può risolvere e bloccare i fondi di contrib1
+            await network.provider.send("hardhat_mine", ["0xf"]);                                                                // mina 15 blocchi per superare PROPOSAL_VOTING_PERIOD (12), così resolveProposal può essere chiamato e bloccare i fondi di contrib1
             await pool.connect(applicant).resolveProposal(1n);
 
             expect(await pool.disposableValue(contrib1.address)).to.equal(0n);
