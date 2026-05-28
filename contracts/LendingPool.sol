@@ -187,7 +187,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         return (p.applicant, p.amount, p.interestRate, p.duration, p.btcAddressHash, p.submittedBlock, p.approveVoters.length, p.status);
     }
 
-    function hasVotedOn(uint256 proposalId, address voter) external view returns (bool) { // usata in autovoter per verificare se ha già votato
+    function hasVotedOn(uint256 proposalId, address voter) external view returns (bool) { // usata in yesman per verificare se ha già votato
         return _proposals[proposalId].hasVoted[voter];
     }
 

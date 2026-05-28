@@ -20,7 +20,7 @@ python3 scripts/DemoOperations.py
 
 
 4rd terminal
-python3 scripts/AutoVoter.py
+python3 scripts/YesMan.py
 
 ---------------- gas measuraments instructions ----------------
 
