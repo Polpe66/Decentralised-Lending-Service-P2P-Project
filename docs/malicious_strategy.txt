@@ -1,0 +1,403 @@
+==============================================================================
+STRATEGIA MALICIOSA - ATTACCO "WHALE SELF-LOAN + BTC COLLATERAL DRAIN"
+==============================================================================
+
+Risposta alla sezione 1.5 della spec:
+"Discuss if there is a possible malicious strategy for a contributor to gain
+an unfair remuneration at the expense of other honest contributors (without
+relying on a reentrancy attack), e.g., by leveraging the loan repayment
+majority rule."
+
+==============================================================================
+1. OVERVIEW
+==============================================================================
+
+Combinazione di tre debolezze strutturali della spec:
+
+(a) Governance senza cap: chi controlla >50% del pool puo' approvare loan
+    unilateralmente (weightedYes * 2 > totalDisp).
+
+(b) Self-loan permesso: lo stesso indirizzo puo' ricoprire ruolo di
+    applicant e contributor (spec sez. 1.1: "the same user can cover both
+    roles at the same time").
+
+(c) Repayment "highest initial first": l'ordine di rimborso del capitale
+    privilegia chi ha bloccato di piu' (spec sez. 1.3, partial repay).
+    Il whale si autoripaga PRIMA che gli altri vedano un wei.
+
+(d) Bonus weakness gia' riconosciuta dalla spec (footnote 1):
+    - Nessuna proof of ownership dell'indirizzo BTC
+    - Nessun locking dei fondi BTC dichiarati come collateral
+    - L'oracle balance e' uno snapshot stale: applicant puo' spendere il
+      BTC dopo la resolve senza alcuna conseguenza on-chain.
+
+L'attacker combina (a)+(b)+(c)+(d) per estrarre valore dai contributor
+onesti a costo quasi zero.
+
+==============================================================================
+2. SETUP NUMERICO
+==============================================================================
+
+Stato iniziale del pool:
+  Alice (attaccante):  6 ETH depositati (60% del pool)
+  c1 (onesto):         1 ETH
+  c2 (onesto):         1 ETH
+  c3 (onesto):         2 ETH
+  -----------------------
+  totalDisposable:    10 ETH
+
+Alice possiede inoltre 1 BTC (= 30 ETH al cambio fisso spec 1:30) nel suo
+wallet Bitcoin. Nota: lo possiede SOLO temporaneamente, e lo spostera'
+dopo aver ottenuto il loan.
+
+==============================================================================
+3. ESECUZIONE DELL'ATTACCO
+==============================================================================
+
+Step 1 - Setup oracle BTC
+-------------------------
+Alice chiama:
+    oracle.requestUpdate{value: MIN_ORACLE_FEE}(hash(BTCaddr))
+
+L'oracle off-chain (oracle_service.py) intercetta l'evento UpdateRequested,
+legge il saldo corrente dell'indirizzo BTC, e scrive on-chain:
+    balances[hash] = 1e8 satoshi  (1 BTC)
+
+Lo smart contract risponde:
+    getEthEquivalent(hash) = 30 ETH
+
+Step 2 - Submit della proposta
+------------------------------
+Alice come applicant:
+    pool.submitProposal(amount=10 ETH, rate=10, duration=100, btcHash)
+
+La proposta viene registrata con proposalId = 0.
+Evento ProposalSubmitted emesso.
+
+Step 3 - Voto pesato
+--------------------
+Alice come contributor:
+    pool.vote(0, true)
+
+approveVoters = [Alice]
+weightedYes = disposable(Alice) = 6 ETH
+
+Step 4 - Wait voting period
+---------------------------
+Alice (o il network) mina 13+ blocchi per superare
+PROPOSAL_VOTING_PERIOD = 12.
+
+Step 5 - Resolve
+----------------
+Alice come applicant:
+    pool.resolveProposal(0)
+
+Il contratto LendingPool esegue i check (resolveProposal L198-273):
+  - p.applicant != 0                          ok
+  - p.applicant == msg.sender                 ok (Alice e' applicant)
+  - p.status == Active                        ok
+  - block.number > submittedBlock + 12        ok
+  - totalDisp(10) >= amount(10)               ok (no early reject pool)
+  - oracle.getEthEquivalent = 30 ETH          ok
+    (>> amount 10 ETH, no early reject BTC)
+  - weightedYes(6) * 2 = 12 > totalDisp(10)   ok (quorum 51%+ raggiunto)
+
+Status: Active -> Approved.
+
+Lock proporzionale:
+    share_Alice = 10 * 6 / 10 = 6 ETH
+    share_c3    = 10 * 2 / 10 = 2 ETH
+    share_c1    = 10 * 1 / 10 = 1 ETH
+    share_c2    = 10 * 1 / 10 = 1 ETH
+
+_sortContributors ordina per share DESC (insertion sort O(n^2)):
+    [ Alice(6), c3(2), c1(1), c2(1) ]
+    tie-break per address ASC tra c1 e c2.
+
+LoanContract deployato con {value: 10 ETH}.
+Constructor invia 10 ETH al wallet di Alice (applicant).
+
+Eventi: LoanRegistered, ProposalApproved(loanedAmount=10).
+
+Step 6 - BTC drain (post-resolve)
+---------------------------------
+Alice ora trasferisce 1 BTC dal suo indirizzo Bitcoin a un altro suo
+indirizzo (oppure lo vende su exchange).
+
+Nessuna conseguenza on-chain Ethereum: il LoanContract e' gia' stato
+deployato con il disbursement. Anche se qualcuno richiede un nuovo
+update dell'oracle (balance scenderebbe a 0), non c'e' alcun meccanismo
+di clawback del loan.
+
+Step 7 - Self-repayment strategico
+----------------------------------
+Alice come applicant:
+    loan.partialRepay{value: 6 ETH}()
+
+LoanContract.partialRepay (L143-255):
+  baseAmount = min(6, 10) = 6 ETH
+  Loop contributors (gia' ordinati DESC):
+    i=0 -> c = Alice
+      capacity = initialLocked - unlocked - compRecovered = 6 - 0 - 0 = 6
+      take = min(6, 6) = 6
+      _splitBaseForfeit(Alice, 6):
+        unrecoveredAdvance = alreadyCompensated - compRecovered = 0
+        return (toComp=0, toC=6)
+      unlockedSoFar[Alice] += 6 = 6
+      lendingPool.repayLockedValue{value: 6}(Alice, 6)
+        -> lockedValue[Alice] -= 6 = 0
+        -> totalLocked -= 6 = 4
+      baseRemaining = 0
+  Loop esce. c3, c1, c2 ricevono 0.
+
+  remainingLoanAmount = 10 - 6 = 4
+  remainingInterest non variato (Alice paga solo base, no interest)
+  Loan resta Active.
+
+Nota: Alice paga SOLO base e zero interest. Pagare interest sarebbe
+sub-ottimale perche' parte (gain = 50% per collateralPercentage iniziale)
+verrebbe ridistribuita anche agli altri contributor in proporzione al
+loro lock iniziale, riducendo il profitto netto.
+
+Step 8 - Default + comp pool drain (per honest)
+-----------------------------------------------
+Alice non ripaga piu'. La duration espira (block.number > expiryBlock).
+
+c3 (o c1, c2) chiama loan.requestCompensation():
+  - status == Active -> transition a Failed
+    (L262-270: block > expiry, remainingLoanAmount > 0, increaseCollateral)
+  - locked_c3 = initialLockedOf[c3] = 2
+  - owed = 2 - 0 - 0 = 2 ETH
+  - avail = lendingPool.compensationPool() = 0  (nessun loan successful
+    storico ha alimentato il comp pool)
+  - paid = min(2, 0) = 0
+  - alreadyCompensated[c3] += 0
+  - emit CompensationRequested(c3, 2, 0)
+
+c1, c2 stesso esito: 0 recuperato.
+
+Step 9 - Withdraw del deposito
+------------------------------
+Alice come contributor:
+    pool.withdraw(6 ETH)
+
+disposableValue(Alice) = deposits(6) - lockedValue(0) = 6 ok
+deposits[Alice] -= 6 = 0
+totalFundingPool -= 6 = 4
+Transfer 6 ETH -> wallet Alice.
+
+==============================================================================
+4. BILANCIO FINALE
+==============================================================================
+
+Alice (wallet ETH):
+  Start                 : X
+  - 6 (deposit)         : X - 6
+  + 10 (loan disburse)  : X + 4
+  - 6 (partialRepay)    : X - 2
+  + 6 (withdraw)        : X + 4
+  -----------------------------------
+  Profit netto liquido  : +4 ETH
+
+Alice (wallet BTC):
+  Start                 : 1 BTC
+  Trasferito altrove    : 1 BTC (intatto)
+  -----------------------------------
+  Perdita BTC           : 0
+
+Honest contributors:
+  c1: depositi 1 ETH locked, 0 recuperato       -> -1 ETH
+  c2: depositi 1 ETH locked, 0 recuperato       -> -1 ETH
+  c3: depositi 2 ETH locked, 0 recuperato       -> -2 ETH
+  -----------------------------------
+  Perdita totale onesti                         : -4 ETH
+
+Pool LendingPool (stato finale):
+  totalFundingPool = 4 ETH   (deposits c1+c2+c3 ancora tracciati)
+  totalLocked      = 4 ETH   (locked c1+c2+c3, irrecuperabili)
+  actual balance   = 0 ETH   (tutto fuoriuscito: 10 disbursement + 6 withdraw - 6 repay)
+
+Trasferimento zero-sum confermato:
+  +4 ETH di Alice = 4 ETH sottratti agli honest.
+
+==============================================================================
+5. COSTI DELL'ATTACCO
+==============================================================================
+
+Capitale ETH out-of-pocket:
+  Deposit 6 ETH temporaneo, integralmente recuperato via partialRepay
+  + withdraw. Net spese ETH = 0.
+
+Capitale BTC:
+  Detenuto temporaneamente (puo' essere preso a prestito su exchange con
+  fee minima). Recuperato 1:1 post-attacco.
+
+Fee oracle:
+  MIN_ORACLE_FEE ~ 4.6e-6 ETH (4566700000000 wei) - trascurabile.
+
+Gas Ethereum:
+  ~0.005 ETH stimato totale per le tx coinvolte (deposit, requestUpdate,
+  submit, vote, resolve, partialRepay, withdraw).
+
+Costi BTC:
+  Una tx BTC di trasferimento ~ qualche $/sat per byte. Trascurabile.
+
+Tempo totale: ~12 blocchi Ethereum (voting period) + tempo per movimentare
+BTC. Su mainnet ~3 minuti totali.
+
+==============================================================================
+6. PERCHE' HONEST NON POSSONO DIFENDERSI
+==============================================================================
+
+(i) Voto NO da c1+c2+c3:
+    weightedYes = 6 ETH (Alice), implicit no = 4 ETH (c1+c2+c3 votano no
+    o si astengono). Check: 6*2 = 12 > 10. Approva comunque.
+    -> Voto onesto INUTILE.
+
+(ii) Withdraw pre-resolve da honest:
+     Riducono totalDisp (es. tutti withdraw -> totalDisp = 6 ETH). Ora la
+     proposta da 10 ETH viene early-rejected per pool insufficiente.
+     -> Funziona SE honest reagiscono in tempo (12 blocchi).
+     -> Counter: Alice puo' sandwich-attack depositando just-before-resolve
+        per ricostituire totalDisp.
+
+(iii) Refresh oracle pre-resolve:
+      Honest chiama requestOracleUpdate(hash) sperando che il valore BTC
+      sia gia' sceso. Ma Alice sposta BTC solo POST-resolve.
+      -> Update ritorna sempre 30 ETH finche' Alice non ha disbursato.
+      -> Inefficace.
+
+(iv) Refresh oracle post-resolve:
+     Loan gia' emesso. Oracle aggiornato a 0 non ha effetto retroattivo.
+     LoanContract non ha funzione di clawback in funzione del BTC balance.
+     -> Tardivo.
+
+(v) Conoscere quale indirizzo BTC Alice usi:
+    La proposta memorizza keccak256(BTCaddr), non la stringa originale.
+    Reverse-image impossibile in tempo polinomiale.
+    -> Honest non puo' indipendentemente verificare quale BTC sia stato
+       presentato come collateral.
+
+(vi) Block list:
+     Nessun meccanismo on-chain di blacklisting/ban di un'address.
+     -> Alice puo' ripetere l'attacco con nuovo wallet.
+
+==============================================================================
+7. VARIANTI DELL'ATTACCO
+==============================================================================
+
+Variante A - "No BTC ownership":
+  Alice non possiede alcun BTC. Sceglie un indirizzo BTC pubblico con
+  balance gia' sufficiente (es. wallet di un exchange). Hasha e usa come
+  proof of liquidity. Spec sez. 1.4 conferma: "no signature or other
+  form of ownership proof required".
+  Profitto: identico (+4 ETH). Capitale BTC: zero.
+
+Variante B - "Skip self-repay":
+  Alice non chiama partialRepay. Lascia il loan in Active fino a expiry,
+  poi Failed.
+  Net wallet: X+4 (loan ricevuto -6 deposit non recuperabile).
+  Stesso +4 ETH netto, ma 6 ETH deposit bloccati per sempre nel pool.
+  Sub-ottimale rispetto a variante con partialRepay.
+
+Variante C - "Multi-attacker collusion":
+  Alice + Bob colludono: due wallet diversi, somma > 51%. Splittano
+  l'attacco su due loan paralleli per evitare detection.
+
+Variante D - "Sybil whale":
+  Alice splitta 6 ETH su molti wallet sub-pool sotto soglia. Combina con
+  multiple proposte. Aumenta complessita' ma uguale economia.
+
+==============================================================================
+8. MITIGAZIONI POSSIBILI (FUORI SCOPE SPEC)
+==============================================================================
+
+Le mitigazioni seguenti richiederebbero modifica della spec:
+
+(M1) Voting cap:
+     Limitare peso massimo di un singolo voter (es. max 30% di totalDisp).
+     Blocca approval da single-address. Sybil-resistant solo con KYC.
+
+(M2) Self-loan ban:
+     require(applicant != contributor || ...). Banalmente bypassabile
+     con multi-wallet ma alza la barriera.
+
+(M3) Repayment pro-rata:
+     Ogni partial payment distribuito proporzionalmente a TUTTI i
+     contributor invece di highest-first. Elimina vantaggio whale.
+     Modifica sostanziale del protocollo.
+
+(M4) Lock dell'applicant in fail-case:
+     Se applicant e' anche contributor, il suo lock NON viene
+     ripristinato dai propri repayment. I suoi ETH vanno solo agli
+     altri contributor.
+
+(M5) Slashing automatico in caso failed:
+     Quota del lock dell'applicant (se applicant=contributor) viene
+     redistribuita o bruciata al momento del fail. Disincentiva default.
+
+(M6) Locking BTC collateral via HTLC:
+     Bitcoin-side hashlock contract che blocchi il BTC fino al repay
+     completo. Richiede federation o BTC-side smart contract (non
+     nativi su Bitcoin protocol). Fuori scope per il progetto didattico.
+
+(M7) Time-locked vote weight:
+     Snapshot del peso al momento del voto invece che al resolve.
+     Blocca sandwich attack su deposit just-before-resolve.
+
+(M8) Oracle freshness requirement:
+     Forza un update on-chain dell'oracle PRIMA della resolve
+     (max age e.g. 5 blocchi). Costa gas extra ad ogni resolve.
+
+(M9) Collateral percentage progressivo:
+     Inizializzare collateralPercentage piu' alto (es. 80%) cosi' anche
+     in caso di partial repay completato l'attacker perde piu' valore
+     all'interest split.
+
+Mitigazione minimale concreta (poco invasiva):
+  Combinare (M3) repayment pro-rata + (M1) voting cap al 49% = elimina
+  i due meccanismi chiave dell'attacco senza richiedere modifiche
+  cross-chain.
+
+==============================================================================
+9. CONFERMA CON LA SPEC
+==============================================================================
+
+Tutti i passaggi dell'attacco sono permessi esplicitamente dalla spec
+v1.1 11/05/2026:
+
+- sez. 1.1 Actors: "the same user can cover both roles" (applicant +
+  contributor).
+- sez. 1.3 Operations: amount, rate, duration scelti dall'applicant,
+  nessun cap sul peso del voto.
+- sez. 1.3 Resolution: weightedYes > totalDisp/2 -> approva.
+- sez. 1.3 Partial repay: "from initial highest to lowest" -> whale
+  first.
+- sez. 1.4 footnote 1: no proof of BTC ownership, no BTC locking,
+  applicant "may indicate other users' funds" e "may later spend"
+  i fondi BTC.
+
+L'implementazione e' fedele alla spec, quindi il vettore di attacco
+e' una conseguenza intenzionale (per scopi didattici) e non un bug.
+
+==============================================================================
+10. CONCLUSIONE
+==============================================================================
+
+L'attacco "whale self-loan + BTC drain" estrae 4 ETH (sul setup di
+esempio) dai contributor onesti con:
+
+- 0 BTC effettivamente spesi
+- 0 ETH net out-of-pocket (deposit recuperato)
+- ~0.005 ETH gas
+- ~3 minuti tempo
+
+a fronte di un trasferimento zero-sum di 4 ETH dai 3 contributor onesti
+al wallet dell'attaccante.
+
+L'attacco e' viable sull'implementazione attuale e direttamente abilitato
+dalle scelte di spec (governance senza cap, self-loan, repayment
+highest-first, BTC collateral non vincolante). Le mitigazioni richiedono
+modifiche al protocollo che vanno oltre la spec didattica.
+
+==============================================================================
