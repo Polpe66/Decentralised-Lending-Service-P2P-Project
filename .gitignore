@@ -27,3 +27,20 @@ Thumbs.db
 
 # inline vscode settings
 .vscode/settings.json
+
+## LaTeX aux files
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+
+
+
+accounts.json
+lending_pool_info.json
+demo_log.txt
+oracle_contract_info.json
+

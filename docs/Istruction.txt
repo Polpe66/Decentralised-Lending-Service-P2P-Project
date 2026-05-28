@@ -32,3 +32,9 @@ python3 scripts/GasMeasurement.py
 
 
 output -> data/gas_report.csv
+
+
+
+
+------- compile pdf from tex ----
+ pdflatex -interaction=nonstopmode report.tex && pdflatex -interaction=nonstopmode report.tex
