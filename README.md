@@ -63,3 +63,14 @@ python3 scripts/YesMan.py
 source venv/bin/activate
 python3 scripts/DemoOperations.py
 ```
+
+### Terminal for Tests
+
+```bash
+
+npx hardhat test
+# needed the geth node activated
+source venv/bin/activate
+python3 scripts/GasMeasurament.py
+
+```
