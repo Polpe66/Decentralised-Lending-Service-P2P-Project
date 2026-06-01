@@ -1,7 +1,7 @@
 \documentclass{report}
 \usepackage[utf8]{inputenc}
 \usepackage{geometry}
-\geometry{a4paper, margin=1.5cm} % Margini standard
+\geometry{a4paper, margin=1.5cm} % Margini del documento
 
 % --- CONFIGURAZIONE PACCHETTI ---
 \usepackage{amsmath}  % Necessario per gestire i comandi nativi e testuali nelle formule
@@ -12,10 +12,14 @@
 \usepackage{booktabs} % Per linee della tabella più professionali
 \usepackage{hyperref} % Per gestire link e riferimenti in modo pulito
 
+% --- DEFINIZIONE COLORI SINTASSI ---
 \definecolor{codegray}{rgb}{0.95,0.95,0.95}
 \definecolor{codegreen}{rgb}{0,0.6,0}
 \definecolor{codeblue}{rgb}{0,0,0.6}
+\definecolor{bashdarkblue}{rgb}{0.0, 0.2, 0.6}
+\definecolor{bashpurple}{rgb}{0.5, 0.0, 0.5}
 
+% Configurazione globale predefinita (JavaScript)
 \lstdefinelanguage{JavaScript}{
   keywords={break, case, catch, class, const, continue, debugger, default, delete, do, else, enum, export, extends, false, finally, for, function, if, import, in, instanceof, new, null, return, super, switch, this, throw, true, try, typeof, var, void, while, with, let, await, async},
   morecomment=[l]{//},
@@ -36,18 +40,31 @@
     backgroundcolor=\color{codegray},   % Sfondo grigio chiaro
     commentstyle=\color{codegreen},     % Commenti verdi
     keywordstyle=\color{codeblue}\bfseries, % Keyword blu
-    basicstyle=\ttfamily\small,         % Font monospaziato
+    basicstyle=\ttfamily\small,         % Font monospaziato standard
     breaklines=true,                    % A capo automatico
     frame=single,                       % Cornice
     language=JavaScript                 % Linguaggio predefinito
+}
+
+% --- STILE PERSONALIZZATO COMPATTO PER BASH (Copia-Incolla) ---
+\lstdefinestyle{bashterm}{
+    language=bash,
+    basicstyle=\ttfamily\scriptsize,       % Testo rimpicciolito, ultra compatto per terminale
+    keywordstyle=\color{bashdarkblue}\bfseries,
+    commentstyle=\color{codegreen}\itshape,
+    stringstyle=\color{bashpurple},
+    backgroundcolor=\color{codegray},
+    breaklines=true,
+    frame=single,
+    showstringspaces=false
 }
 
 % --- DATI COPERTINA ---
 \title{\textbf{Final Project \\ Decentralised Lending Service}\\[0.7em]
 \large REPORT\\[0.5em]
 \large Peer2Peer Systems and Blockchains }
-\author{Francesco Polperio 635406 \\ Federico Lombardi xxxxxx}
-\date{5 June 2026}
+\author{Francesco Polperio 635406 \\ Federico Lombardi 715426}
+\date{}
 
 \begin{document}
 
@@ -60,20 +77,16 @@
 \setcounter{page}{1}  % Ricomincia a contare da 1
 
 \section*{Assumption}
-\subsection*{Compensation pool semantics}
-The most significant choice concerns the semantics of the compensation pool: we interpret a compensation as a restoration of the contributor's disposable value on the funding pool (deposits left unchanged, \texttt{lockedValue} decreased by the paid amount), rather than as a direct ETH transfer to the contributor's wallet.
+The most significant choice concerns the semantics of the compensation pool: we interpret a compensation as a restoration of the contributor's disposable value on the funding pool, rather than as a direct ETH transfer to the contributor's wallet.
 
-\subsection*{Local nonReentrant}
-The LendingPool contract implements a custom reentrancy guard via the state variable $\_reentrancyStatus$ (with values 1 = free, 2 = entered) and a local nonReentrant modifier, rather than inheriting from OpenZeppelin's ReentrancyGuardUpgradeable.
-
-We avoid ReentrancyGuardUpgradeable to keep full control over the storage layout of the UUPS proxy. Smaller bytecode, self-contained layout, explicit and auditable defense mechanism.
+The LendingPool contract implements a custom reentrancy guard via the state variable \texttt{\_reentrancyStatus} (with values 1 = free, 2 = entered) and a local nonReentrant modifier, rather than inheriting from OpenZeppelin's ReentrancyGuardUpgradeable (in order to have smaller bytecode).
 
 % -------------------------------------------------------------------------------------------
 \section*{Project structure}
 The project is organized into three main layers:
-\paragraph*{Smart contracts (contracts/):} Solidity sources implementing the on-chain logic: \texttt{LendingPool} (fund pool, voting, proposal lifecycle), \texttt{LoanContract} (per-loan state, repayment, compensation), \texttt{BitcoinOracle} (on-chain endpoint for BTC balance queries), and \texttt{LocalProxy} (UUPS proxy wrapper). A \textbf{vulnerable/} subfolder hosts the reentrancy-exposed variant and the attacker contract; \textbf{mocks/} contains test doubles and a V2 implementation used to validate upgradability.
+\paragraph*{Smart contracts (contracts/):} Solidity sources implementing the on-chain logic: \texttt{LendingPool}, \texttt{LoanContract}, \texttt{BitcoinOracle}, and \texttt{LocalProxy}. A \textbf{vulnerable/} subfolder hosts the reentrancy-exposed variant and the attacker contract; \textbf{mocks/} contains test doubles and a V2 implementation used to validate upgradability.
 
-\paragraph*{Off-chain Python services (oracle/, scripts/):} \texttt{oracle$\_$service.py} parses the first 131k blocks of the Bitcoin mainnet, reconstructs the UTXO set, and answers UpdateRequested events emitted by the on-chain oracle. \texttt{InitialSetup.py} bootstraps the private chain. \texttt{DemoOperations.py} runs an end-to-end demo covering all service operations. \texttt{YesMan.py} contributor that always votes approve. \texttt{GasMeasurement.py} benchmarks gas costs per operation.
+\paragraph*{Off-chain Python services (oracle/, scripts/):} \texttt{oracle\_service.py}, \texttt{InitialSetup.py} bootstraps the private chain, \texttt{DemoOperations.py}, \texttt{YesMan.py} contributor that always votes approve, \texttt{GasMeasurement.py}.
 
 \paragraph*{Tests (test/):} Hardhat test suite.
 
@@ -105,11 +118,9 @@ The \texttt{withdraw} function enforces a strict CEI ordering: the disposable ch
 
 Only approve voters are pushed into the iterable \texttt{approveVoters[]} array, while reject voters are tracked only through the \texttt{hasVoted} flag, so the resolution loop walks only the affirmative side.
 
- Each contributor's share is computed as:
-
+Each contributor's share is computed as:
 $$\lfloor \text{amount} \times \frac{\text{disp}_i}{\text{totalDisp}} \rfloor$$
-
- Contributors are then sorted by share descending, ties broken by ascending address, using an in-memory insertion sort.
+Contributors are then sorted by share descending, ties broken by ascending address, using an in-memory insertion sort.
 
 \subsubsection*{Upgradability}
 \texttt{LendingPool} is deployed behind an ERC-1967 proxy and follows the UUPS pattern: only the proxy address is stable over time, while the implementation can be replaced by the owner. 
@@ -126,18 +137,14 @@ The snapshot of each contributor's initial locked share is frozen at this point 
 
 \subsubsection*{Partial Repayment}
 \texttt{partialRepay} splits the incoming value between base and interest. The base component, capped at the remaining loan amount, is distributed by walking the pre-sorted contributors and refunding each one up to their residual capacity:
-
 $$\text{initialLocked} - \text{unlockedSoFar} - \text{compRecovered}$$
-
 If a contributor has already drawn from the compensation pool, the helper \texttt{\_splitBaseForfeit} diverts a proportional slice of their share back to the compensation pool, implementing the spec rule that requesting a compensation forfeits the corresponding applicant repayment.
 
 Any value exceeding loan plus interest is credited to the compensation pool. 
 
 \subsubsection*{Compensation}
 \texttt{requestCompensation} can be called by any contributor at any time while the loan is not \texttt{Successful}. On the first call after \texttt{expiryBlock} the status transitions to \texttt{Failed}, \texttt{increaseCollateral} fires on the pool, and the remaining expected interest is set to zero, so any later repayment goes entirely to the compensation pool. The compensation amount is:
-
 $$\min(\text{owed}, \text{compensationPool})$$
-
 where the owed value subtracts both what the contributor has already been refunded by repayments and what has already been compensated. The actual movement, on the pool side, is a transfer from \texttt{lockedValue} back to disposable without any external call: the compensation pool decreases, the contributor's locked value decreases, the deposit is left unchanged.
 
 \subsubsection*{Termination}
@@ -150,7 +157,7 @@ Trust is concentrated on a single privileged role, the \texttt{operator}, establ
 
 Balances are stored under the key \texttt{keccak256(btcAddress)} as raw satoshi values. \texttt{requestUpdate} is paid ($\texttt{msg.value} \ge \texttt{MIN\_ORACLE\_FEE}$) and emits the event consumed by the off-chain service; \texttt{update}, gated by \texttt{onlyOperator}, commits the fresh balance. 
 
- \texttt{MIN\_ORACLE\_FEE} is hardcoded, being the measured gas cost of the warm-slot update on the private chain.
+\texttt{MIN\_ORACLE\_FEE} is hardcoded, being the measured gas cost of the warm-slot update on the private chain.
 
 \subsubsection*{Auxiliary Wrappers}
 \begin{itemize}
@@ -158,8 +165,7 @@ Balances are stored under the key \texttt{keccak256(btcAddress)} as raw satoshi 
     \item \texttt{LendingPoolV2} is a mock target used only to exercise the UUPS upgrade.
 \end{itemize}
 
-\section*{Off-Chain Components}
-The off-chain layer comprises an oracle service and a set of Python automation scripts.
+\section*{Implementation choices: Off-Chain Components}
 
 \subsection*{Oracle Service}
 The file \texttt{oracle/oracle\_service.py} parses the first $131{,}000$ mainnet blocks from the local \texttt{blk*.dat} files, maintains a per-address satoshi UTXO map, listens for \texttt{UpdateRequested} events on the on-chain oracle contract, and submits the corresponding update transactions signed by the operator key.
@@ -168,21 +174,20 @@ The file \texttt{oracle/oracle\_service.py} parses the first $131{,}000$ mainnet
 \begin{itemize}
     \item \texttt{InitialSetup.py} creates EOAs, funds them from the prefunded miner account, deploys the production contracts behind the proxy and writes the resulting configuration files.
     \item \texttt{DemoOperations.py} runs a complete end-to-end scenario, printing the balances of the involved accounts and the relevant pool state after every meaningful step.
-    \item \texttt{GasMeasurement.py} produces the gas report used in the dedicated section of this report.
+    \item \texttt{GasMeasurement.py} produces the gas report.
     \item \texttt{YesMan.py} is the automated contributor required by the assignment: it watches \texttt{ProposalSubmitted} events and approves every new proposal as soon as it sees one.
 \end{itemize}
 
 \subsection*{Events}
-State transitions are exposed to off-chain consumers through a comprehensive set of events. 
+State transitions are exposed to off-chain consumers through a set of events. 
 \begin{itemize}
     \item The pool emits \texttt{Deposited} and \texttt{Withdrawn} on funding-pool movements, the full proposal lifecycle through \texttt{ProposalSubmitted}, \texttt{ProposalVoted}, \texttt{ProposalApproved} and \texttt{ProposalRejected}, and \texttt{LoanRegistered}, \texttt{LoanDeregistered}, \texttt{CollateralPercentageChanged} on the loan registry.
-    \item Each loan contract emits \texttt{LoanCreated} at construction, \texttt{Repayment} (with base, interest, excess and residuals) on every \texttt{partialRepay}, \texttt{MarkedFailed} on the transition to Failed, \texttt{CompensationRequested(owed, paid)} on each compensation attempt, \texttt{LoanClosed} on settlement, and \texttt{LoanTerminated} on \texttt{terminate}. 
+    \item Each loan contract emits \texttt{LoanCreated} at construction, \texttt{Repayment} (with base, interest, excess to comp and residuals) on every \texttt{partialRepay}, \texttt{MarkedFailed} on the transition to Failed, \texttt{CompensationRequested(owed, paid)} on each compensation attempt, \texttt{LoanClosed} on settlement, and \texttt{LoanTerminated} on \texttt{terminate}. 
     \item The oracle emits \texttt{UpdateRequested} and \texttt{BalanceUpdated}. \texttt{ProposalSubmitted} is consumed by the \texttt{YesMan} automated voter, while \texttt{UpdateRequested} and \texttt{BalanceUpdated} are the integration points of the off-chain oracle service.
 \end{itemize}
 
 \section*{Gas evaluation}
-\subsection*{Methodology}
-Gas costs are measured by \texttt{scripts/GasMeasurement.py} on the private geth chain, with gas price fixed at 1 gwei. Each scenario is run on a freshly initialised chain and the raw \texttt{gasUsed} value of each transaction receipt is collected. The full output is persisted in \texttt{data/gas\_report.csv}.
+Gas costs are measured by \texttt{scripts/GasMeasurement.py} on the private geth chain. The full output is written in \texttt{data/gas\_report.csv}.
 
 \subsection*{Results}
 \begin{center}\small
@@ -205,7 +210,7 @@ Operation (scenario) & Gas & Cost (ETH) \\
 \texttt{resolveProposal} -- Rejected (BTC)       &  73,084  & 7.31e-5 \\
 \texttt{resolveProposal} -- Rejected (vote)      &  82,345  & 8.23e-5 \\
 \texttt{partialRepay} -- mid                     &  81,566  & 8.16e-5 \\
-\texttt{partialRepay} -- close Successful          & 190,005  & 1.90e-4 \\
+\texttt{partialRepay} -- close Successful         & 190,005  & 1.90e-4 \\
 \texttt{partialRepay} -- overpay                 & 192,831  & 1.93e-4 \\
 \texttt{partialRepay} -- on Failed (split)       & 150,058  & 1.50e-4 \\
 \texttt{requestCompensation} -- first (Failed)   &  85,212  & 8.52e-5 \\
@@ -215,109 +220,48 @@ Operation (scenario) & Gas & Cost (ETH) \\
 \bottomrule
 \end{tabular}
 \end{center}
-
-\subsection*{Comments}
-\subsubsection*{Resolution dominates}
-\texttt{resolveProposal} on the approve path is by far the most expensive operation in the system: it iterates the full contributor list, runs the insertion sort in memory, writes the per-contributor lock state on chain, and deploys a fresh \texttt{LoanContract} that immediately disburses the loaned amount. The bulk of the cost comes from the \texttt{CREATE} opcode and the constructor body, not from the sort. The delta between (N=2) and (N=5) is only about 375k gas, which confirms that the per-contributor overhead is small compared to the fixed deployment cost.
-
-\subsubsection*{Cheap reject paths}
-The three rejection scenarios short-circuit before any deploy: insufficient pool, insufficient BTC liquidity and majority not reached. The vote-based rejection is the most expensive of the three because it still has to walk the affirmative voters to compute \texttt{weightedYes}; the pool-low and BTC checks return immediately after a single state read.
-
-\subsubsection*{Deposits, withdraws, votes}
-\texttt{deposit} pays the cold-slot penalty on the first call (initialisation of \texttt{deposits[]} and registration in the contributor list); subsequent deposits drop to about a third of the cost. \texttt{withdraw} sits below 50k gas because all state slots are warm after the disposable check. Vote-approve is roughly twice as expensive as vote-reject because of the push into the iterable \texttt{approveVoters[]} array.
-
-\subsubsection*{Oracle update}
-\texttt{oracle.update} paths follow standard gas constraints. The 17k gas gap between the cold and warm \texttt{update} paths matches the standard 20k \texttt{SSTORE} difference between writing a zero slot for the first time and overwriting a non-zero value. The pool-side \texttt{requestOracleUpdate} adds about 12k gas of forwarding logic on top of the bare oracle call.
-
-\subsubsection*{Repayment}
-\texttt{partialRepay} cost grows with the number of contributors actually touched and with the closing branch: a mid-loan payment that refunds a single contributor sits around 80k gas, the close-Successful path crosses 190k because it triggers the final sweep, \texttt{decreaseCollateral} and \texttt{markLoanClosed}. The Failed-path variant is heavier than a comparable Active-path payment because \texttt{\_splitBaseForfeit} runs on every iteration.
-
-\subsubsection*{Compensation, termination, upgrade}
-The first \texttt{requestCompensation} after expiry is more expensive than subsequent ones because it transitions the loan to \texttt{Failed} and bumps \texttt{collateralPercentage}; later calls only update the per-contributor accounting. \texttt{terminate} on a clean Successful loan is the cheapest non-trivial operation, since the loan registry has already been cleared by the closing repayment. The UUPS upgrade path is similarly cheap: a single \texttt{SSTORE} on the implementation slot plus the \texttt{reinitializer(2)} call.
-
+The \texttt{resolveProposal} on the approve path is by far the most expensive operation in the system: it iterates the full contributor list, runs the insertion sort in memory, writes the per-contributor lock state on chain, and deploys a fresh \texttt{LoanContract} that immediately disburses the loaned amount. The delta between (N=2) and (N=5) is only a small fraction of gas, which confirms that the per-contributor overhead is small compared to the fixed deployment cost.
 
 \section*{Reentrancy modification and attack}
 \subsection*{Vulnerable variant}
-The vulnerable contract \texttt{contracts/vulnerable/LendingPoolVulnerable.sol} is a stripped clone of the production \texttt{LendingPool} with one deliberate change: in the \texttt{withdraw} function the external ETH transfer is performed \emph{before} the state update, and the \texttt{nonReentrant} guard is removed. The Checks--Effects--Interactions ordering is therefore reversed, and the disposable balance check still passes when the call re-enters the function, because \texttt{deposits[]} has not yet been decremented.
-
-\begin{lstlisting}
-function withdraw(uint256 amount) external {        // no nonReentrant
-    require(amount > 0, "Zero amount");
-    require(disposableValue(msg.sender) >= amount, "Insufficient");
-    (bool ok, ) = msg.sender.call{value: amount}("");   // INTERACTION first
-    require(ok, "Transfer failed");
-    unchecked { deposits[msg.sender] -= amount;         // EFFECTS after
-                totalFundingPool -= amount; }
-}
-\end{lstlisting}
+The vulnerable contract \texttt{contracts/vulnerable/LendingPoolVulnerable.sol} is a clone of the real \texttt{LendingPool} with one change: in the \texttt{withdraw} function the external ETH transfer is performed \emph{before} the state update, and the \texttt{local nonReentrant} guard is removed. The CEI ordering is therefore reversed, and the disposable balance check still passes when the call re-enters the function, because \texttt{deposits[]} has not yet been decremented.
 
 \subsection*{Attacker contract}
-The attacker contract \texttt{contracts/vulnerable/ReentrancyAttacker.sol} is a minimal helper holding three pieces of state: the address of the vulnerable pool, the owner, the recorded \texttt{attackAmount} and an attack counter. It exposes a \texttt{deposit} function that forwards the value to the vulnerable pool to satisfy the disposable check, an \texttt{attack} function callable only by the owner that triggers the first \texttt{withdraw}, a \texttt{receive} fallback that re-enters \texttt{withdraw} as long as the counter has not reached \texttt{MAX\_REENTRIES = 5} and the pool still holds enough balance, and a \texttt{sweep} function used by the owner to recover the drained ETH after the attack.
+The attacker contract \texttt{contracts/vulnerable/ReentrancyAttacker.sol} is a minimal helper holding: the address of the vulnerable pool, the owner, the recorded \texttt{attackAmount} and an attack counter. 
 
-\subsection*{Attack flow}
-The attacker first calls \texttt{deposit} with the chosen stake, which records \texttt{attackAmount} and registers the stake on the vulnerable pool. The owner then calls \texttt{attack}, which invokes \texttt{withdraw(attackAmount)} on the pool. The pool transfers the ETH back to the attacker through a low-level \texttt{call}; the attacker's \texttt{receive} function then re-enters \texttt{withdraw} with the same amount. Because the pool has not yet decremented its bookkeeping, the disposable check still succeeds, and the loop continues until either the maximum number of re-entries is reached or the pool runs out of balance. At the end of the cascade, the attacker has withdrawn the original stake plus the drained value, while the funds of other contributors become unreachable on the pool.
+The attacker first calls \texttt{deposit}, which records \texttt{attackAmount} and registers the stake on the vulnerable pool. The owner then calls \texttt{attack}, which invokes \texttt{withdraw(attackAmount)} on the pool. The pool transfers the ETH back to the attacker through a low-level \texttt{call}.
 
-\subsection*{Test}
-The test \texttt{test/Reentrancy.test.js} wires the vulnerable pool against the real oracle, seeds the pool with legitimate deposits from a few honest contributors, deploys the attacker, runs the attack, and asserts that the attacker's net ETH gain exceeds its original stake. The same test then targets the production \texttt{LendingPool} with an identical attacker and verifies that the attack reverts with \texttt{"Reentrant call"}, confirming that the mutex and the Checks--Effects--Interactions ordering on the production code prevent the exploit.
-
+The attacker's \texttt{receive} function then re-enters \texttt{withdraw} with the same amount. Because the pool has not yet decremented its bookkeeping, the disposable check still succeeds, and the loop continues until either the maximum number of re-entries is reached or the pool runs out of balance. At the end of the cascade, the attacker has withdrawn the original stake plus the drained value, while the funds of other contributors become unreachable on the pool.
 
 \section*{Malicious strategy}
-\subsection*{Whale self-loan with BTC drain}
-The strategy combines four features of the specification into a profitable extraction of value from honest contributors. None of the steps relies on reentrancy; all of them are explicitly permitted by the specification.
+The resolution rule approves a proposal as soon as the weighted yes votes exceed half of the disposable pool, so a single contributor holding more than half of the disposable value can unilaterally approve any proposal, including their own. 
 
-\subsubsection*{Spec ingredients}
-The first ingredient is the absence of any per-voter weight cap: the resolution rule approves a proposal as soon as the weighted yes votes exceed half of the disposable pool, so a single contributor holding more than half of the disposable value can unilaterally approve any proposal, including their own. 
+Furthermore, the specification explicitly allows the same address to act as applicant and contributor on the same loan. 
 
-The second ingredient is that the specification explicitly allows the same address to act as applicant and contributor on the same loan. 
+The problem's origin is the fact that contributors are refunded in descending order of initial locked value, with ties broken by ascending address, so whoever locked the largest share is reimbursed first. 
 
-The third ingredient is the highest-locked-first rule on partial repayments: contributors are refunded in descending order of initial locked value, with ties broken by ascending address, so whoever locked the largest share is reimbursed first. 
+Paramount aspect is the absence of any ownership proof or locking on the BTC collateral: the applicant can pledge any rich Bitcoin address, the oracle balance is a one-shot snapshot, and there is no clawback if the BTC is moved after the resolution.
 
-The fourth ingredient is the absence of any ownership proof or locking on the BTC collateral: the applicant can pledge any rich Bitcoin address, the oracle balance is a one-shot snapshot, and there is no clawback if the BTC is moved after the resolution.
+\subsection*{Malicious walkthrough}
+The exploit is executed by an attacker, Alice, who controls more than half of the disposable pool and holds a BTC address with a balance sufficient to cover the loan. The attack vector begins when Alice triggers an oracle update for the hash of her BTC address and subsequently submits a proposal where she acts as both the applicant and the majority funder. During the voting phase, she casts a positive vote. Because she controls the majority of the pool, her vote alone satisfies the weighted-majority check, completely overriding any votes from honest contributors.
 
-\subsection*{Numeric walkthrough}
-Consider an initial pool with Alice holding 6 ETH (60\%), and three honest contributors $c_1$, $c_2$, $c_3$ holding respectively 1, 1 and 2 ETH, for a total disposable value of 10 ETH. Alice also controls a Bitcoin address holding 1 BTC, which corresponds to 30 ETH at the spec rate. 
+Once the voting period concludes, Alice requests the resolve of the proposal. All system checks pass because the proportional split recognizes her as the largest shareholder. Consequently, a fresh loan contract is deployed, and the funds are disbursed directly to her wallet. Immediately after receiving the funds, Alice moves the 1 BTC away from the provided BTC address. Since the Ethereum side never re-reads the oracle after this point, the state remains unaffected.
 
-She starts by requesting an oracle update for the hash of her BTC address paying the minimum fee, so that the on-chain oracle records 1 BTC for that hash. She then submits a loan proposal for 10 ETH, with rate 10, duration 100 and the same BTC hash. She votes approve, which contributes her full 6 ETH of disposable value to the weighted yes count. 
+Alice then repays partially, paying back only the portion of the capital that matches her own share, never reaching the honest contributors. Furthermore, she intentionally avoids paying any interest. 
 
-After at least thirteen blocks she calls \texttt{resolveProposal}: the pool sufficiency check passes ($10 \ge 10$), the BTC liquidity check passes ($30 \ge 10$), the weighted majority check passes ($6 \times 2 = 12 > 10$). The proposal moves to Approved and the proportional lock is computed: 6 from Alice, 2 from $c_3$, 1 from $c_1$ and 1 from $c_2$. The insertion sort produces the order Alice, $c_3$, $c_1$, $c_2$. A fresh \texttt{LoanContract} is deployed with \texttt{msg.value = 10}, and its constructor disburses 10 ETH directly to Alice's wallet.
+After the loan duration elapses, the contract is left with unpaid capital representing the honest contributors' share, along with unpaid interest. When the honest contributors eventually request a compensation, the loan is failed. Finally, Alice safely withdraws her now-unlocked ETH deposit.
 
-Once the disbursement is on her wallet, Alice moves the 1 BTC away from the pledged address. The Ethereum side is unaffected: the loan has already been granted and the protocol has no clawback bound to the oracle balance. Alice then calls \texttt{partialRepay} with 6 ETH. The base loop iterates the pre-sorted contributors and immediately picks Alice as the first refund target: her residual capacity is 6, the helper \texttt{\_splitBaseForfeit} returns (0, 6), her \texttt{unlockedSoFar} is incremented to 6 and \texttt{lendingPool.repayLockedValue} is called with 6, which brings her \texttt{lockedValue} to zero. The base remaining drops to zero and the loop exits before any of the honest contributors is reached. 
+\subsection*{Outcome}
+Alice walks away with her original deposit completely intact, supplemented by the exact share of capital contributed by the honest users, while her original BTC collateral remains untouched. The honest contributors suffer a total loss of their economic stake. The entire exploitation process requires only negligible gas and oracle fees from the attacker and is fully completed within roughly the duration of the standard voting period.
 
-Alice deliberately does not pay any interest: under the initial collateral percentage of 50, half of every interest tranche would be redistributed across the contributors proportionally to their initial locks, which would partially undo her gain. The loan remains Active with a residual loan amount of 4 ETH. After the duration elapses, the honest contributors call \texttt{requestCompensation}: the loan transitions to Failed, the collateral percentage is bumped up, but the compensation pool is empty because no successful loan has ever fed it, so each honest call recovers zero. Finally Alice withdraws her now-unlocked 6 ETH deposit.
+\section*{User manual}
 
-\subsection*{Final balance}
-Alice's net cashflow on the ETH side is $-6$ on the deposit, $+10$ on the disbursement, $-6$ on the self-repayment and $+6$ on the withdrawal, for a net gain of $+4$ ETH. Her BTC holding is intact. The honest contributors lose 1, 1 and 2 ETH respectively, for a total loss of 4 ETH. The transfer is exactly zero-sum and the operational cost is negligible: the gas consumed across the seven involved transactions amounts to approximately 0.005 ETH on the test chain, the oracle fee is well below $10^{-5}$ ETH, the elapsed wall-clock time is about twelve Ethereum blocks plus one Bitcoin transaction.
+\begin{lstlisting}[style=bashterm]
+# first terminal
+geth --datadir data removedb #only to remove old chain data
 
-\subsection*{Why honest defences fail}
-Voting no does not change anything because Alice already controls a weighted majority on her own. A pre-resolve withdrawal by honest contributors would lower the total disposable value below the requested amount and trigger the pool-insufficiency early reject, but Alice can defeat this by depositing fresh ETH right before her own \texttt{resolveProposal} call, since voting weights are evaluated at resolution time on the current disposable value and not snapshotted at submission. 
-
-Refreshing the oracle before the resolution is useless because Alice moves the BTC only after the disbursement; refreshing after the resolution is useless because the loan contract has no oracle-driven clawback. Honest contributors cannot independently verify which Bitcoin address she pledged, because the proposal stores only the keccak hash of the address and the preimage cannot be recovered in polynomial time. There is no on-chain blacklist, so even if she were identified ex-post she could repeat the attack from a fresh wallet.
-
-\subsection*{Variants}
-In the no-BTC-ownership variant the attacker never holds the BTC at all: she picks any public address with sufficient balance, for instance an exchange hot wallet, and uses its hash as the proof of liquidity; the specification explicitly allows this, and the profit is unchanged. 
-
-In the skip-self-repay variant the attacker simply lets the loan default without ever paying back: her deposit of 6 ETH remains locked forever inside the pool, but the disbursement still nets her $+4$ ETH; the same profit is achieved with less effort but with ETH frozen on chain. 
-
-In the collusion variant two distinct wallets jointly hold more than half of the disposable pool and split the load across parallel proposals to make detection harder. 
-
-In the Sybil variant a single attacker splits the 6 ETH across many small wallets to evade naive whale detection, with no change in the underlying economy.
-
-\subsection*{Mitigations}
-A per-voter weight cap, for instance limiting the weight of a single address to thirty per cent of the total disposable value, blocks the unilateral approval directly. Banning the case applicant equals contributor raises the bar without a multi-wallet split. Replacing the highest-locked-first refund with a strictly pro-rata distribution eliminates the front-of-queue advantage that lets the attacker recover her own deposit before honest contributors. Treating the applicant's own contributor share as junior in the failed case, or slashing it explicitly on failure, removes the incentive to act as both roles on the same loan. 
-
-A BTC-side HTLC, even if it would require a federation or a separate sidechain, would close the collateral hole. Snapshotting the voting weights at submission time, rather than at resolution, defeats the sandwich-deposit defence bypass. Forcing a fresh oracle refresh within a short window before the resolution narrows the staleness gap. Initialising the collateral percentage to a higher value would also make any partial-repayment strategy less profitable for an attacker who insists on paying interest. The minimal-invasive combination of a voting cap and a pro-rata refund rule already removes both economic preconditions of the attack without requiring any cross-chain machinery.
-
-
-\sectionsection*{User manual}
-\subsection*{Requirements}
-The code targets a Linux environment with \texttt{node} (version 18 or higher, with \texttt{npm install} already run at the project root), Python 3.10 or higher inside a virtual environment with the dependencies of \texttt{requirements.txt} installed, the \texttt{geth} binary at Berlin fork compatibility, and \texttt{jq} available on the path. The first \texttt{blk00000.dat} and \texttt{blk00001.dat} files of the Bitcoin mainnet must be placed inside the \texttt{chaindata/} directory, since the off-chain oracle reads them to compute address balances over the first 131,000 blocks.
-
-\subsection*{Starting the private chain}
-The first terminal is dedicated to the geth node. The data directory must be wiped, then re-initialised from the genesis file shipped with the project, and finally the node must be started with the miner unlocked on the prefunded account. The full sequence is:
-
-\begin{lstlisting}[language=bash]
-geth --datadir data removedb
 geth --datadir data init project2526genesis.json
+
 geth --datadir data --networkid 202526 \
   --http --http.api eth,net,web3,personal,debug,admin \
   --http.corsdomain '*' --allow-insecure-unlock \
@@ -328,38 +272,28 @@ geth --datadir data --networkid 202526 \
   --password 0xd278d247A52C550508ea2b2C9321d816238fb523psw.txt
 \end{lstlisting}
 
-The node must be left running for the rest of the session.
-
-\subsection*{Deployment and oracle}
-The second terminal performs the initial deployment and runs the off-chain oracle. After activating the Python virtual environment, the contracts are compiled and the deployment script is run; once the deployment has written the configuration files under \texttt{data/}, the oracle service can be started in the same terminal:
-
-\begin{lstlisting}[language=bash]
+\begin{lstlisting}[style=bashterm]
+# second terminal
 source venv/bin/activate
+
 npx hardhat compile
-python3 scripts/InitialSetup.py
-OPERATOR_PRIVATE_KEY=$(jq -r .oracle_operator.key data/accounts.json) \
-python3 oracle/oracle_service.py
+
+python3 scripts/InitialSetup.py #wait the end of the execution before proceeding
+
+OPERATOR_PRIVATE_KEY=$(jq -r .oracle_operator.key data/accounts.json) \ python3 oracle/oracle_service.py
 \end{lstlisting}
 
-The oracle service must stay running for the duration of any session that involves loan proposals, since the resolution step reads the balance written on chain by the operator.
+\begin{lstlisting}[style=bashterm]
+# third terminal optional
+source venv/bin/activate
+python3 scripts/YesMan.py
 
-\subsection*{Demo}
-The third terminal runs the demonstration script, which exercises a complete end-to-end scenario and prints the balances and the relevant pool state after every meaningful operation. The virtual environment must be activated again in this terminal, then the script is launched:
+\end{lstlisting}
 
-\begin{lstlisting}[language=bash]
+\begin{lstlisting}[style=bashterm]
+# fourth terminal
 source venv/bin/activate
 python3 scripts/DemoOperations.py
 \end{lstlisting}
-
-\subsection*{Automated voter}
-If the run is meant to include the automated voter required by the assignment, the voter must be started \emph{before} the demo: open a dedicated terminal, activate the virtual environment, and launch \texttt{YesMan.py}; once the voter is listening for \texttt{ProposalSubmitted} events, start the demo in its own terminal. The voter automatically deposits a small stake on the pool on startup and approves every new proposal it observes.
-
-\begin{lstlisting}[language=bash]
-source venv/bin/activate
-python3 scripts/YesMan.py
-\end{lstlisting}
-
-\subsection*{Tests and gas measurement}
-The full Hardhat test suite is launched from the project root with \texttt{npx hardhat test}; individual files can be targeted by appending the path, for instance \texttt{npx hardhat test test/Reentrancy.test.js} to exercise the reentrancy demonstration against the deliberately vulnerable contract and against the production pool. The gas table reported in this document is regenerated by \texttt{python3 scripts/GasMeasurement.py} against the private chain; the script produces \texttt{data/gas\_report.csv}. The exact geth re-initialisation sequence used to obtain repeatable measurements is documented in \texttt{docs/Istruction.txt}.
 
 \end{document}
