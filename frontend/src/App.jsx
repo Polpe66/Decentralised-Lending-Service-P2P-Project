@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useApp } from "./state";
 import Schema from "./components/Schema";
+import StatusBar from "./components/StatusBar";
 import PoolDashboard from "./components/PoolDashboard";
 import Proposals from "./components/Proposals";
 import Loans from "./components/Loans";
@@ -49,8 +50,11 @@ export default function App() {
           <div className="lg:col-span-2">
             <Schema />
           </div>
-          <div className="min-w-0">
-            <EventFeed />
+          <div className="min-w-0 flex flex-col gap-3">
+            <StatusBar />
+            <div className="flex-1 min-h-0">
+              <EventFeed />
+            </div>
           </div>
         </div>
 
