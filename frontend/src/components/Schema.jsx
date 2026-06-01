@@ -16,18 +16,21 @@ const VIEW_H = 580;
 // Fixed node positions in the SVG viewBox coordinate space.
 const POS = {
   pool: [500, 300],
-  oracle: [150, 92],
-  app0: [855, 92],
+  oracle: [150, 84],
+  app0: [855, 84],
   app1: [892, 320],
-  c0: [235, 470],
+  c0: [270, 478],
   c1: [500, 500],
-  c2: [765, 470],
+  c2: [730, 478],
 };
-// Left column slots for dynamically-discovered loan contracts.
+// Left column slots for dynamically-discovered loan contracts. Node cards have a
+// FIXED pixel height, so the gap to the oracle (top) and contrib[0] (bottom) is
+// kept wide enough that they never overlap even when the diagram is rendered in
+// the narrow 2/3 column (shorter container → cards closer in px).
 const LOAN_SLOTS = [
-  [120, 215],
-  [120, 388],
-  [120, 95],
+  [112, 215],
+  [112, 335],
+  [112, 455],
 ];
 
 // addr (lowercase) -> diagram node id, for the demo cast.
@@ -93,7 +96,16 @@ function useSchemaModel(refreshKey) {
           0,
           "latest"
         );
-        const loanAddrs = [...new Set(regs.map((e) => e.args.loanContract))];
+        // First registration block per loan, preserving discovery order.
+        const regBlock = {};
+        const loanAddrs = [];
+        for (const e of regs) {
+          const a = e.args.loanContract;
+          if (!(a in regBlock)) {
+            regBlock[a] = e.blockNumber;
+            loanAddrs.push(a);
+          }
+        }
         const loans = await Promise.all(
           loanAddrs.map(async (addr) => {
             const c = loanAt(addr);
@@ -126,9 +138,23 @@ function useSchemaModel(refreshKey) {
               remaining,
               terminated,
               contributors: parts,
+              regBlock: regBlock[addr],
             };
           })
         );
+
+        // A terminal loan (1=Failed / 2=Successful) is dropped from the diagram
+        // once a newer proposal has been submitted after it was registered, so
+        // closed loans clear out as soon as the next loan request arrives.
+        let newestProposalBlock = -1;
+        if (Number(proposalCount) > 0) {
+          const lastP = await pool.getProposal(Number(proposalCount) - 1);
+          newestProposalBlock = Number(lastP[5]);
+        }
+        const visibleLoans = loans.filter((l) => {
+          const terminal = l.status === 1 || l.status === 2;
+          return !(terminal && newestProposalBlock > l.regBlock);
+        });
 
         // Voting detail for the latest still-Active proposal (the one being
         // voted on). weightedYes mirrors the contract: sum of disposableValue
@@ -170,7 +196,7 @@ function useSchemaModel(refreshKey) {
             oracle: { sat: oracleSat, eth: oracleEth },
             contributors,
             applicants,
-            loans,
+            loans: visibleLoans,
             voting,
             events,
           });
@@ -476,8 +502,8 @@ export default function Schema() {
           </NodeCard>
         ))}
 
-        {/* Loan contracts */}
-        {m.loans.map((l) => (
+        {/* Loan contracts — skip any without an assigned slot (no coord) */}
+        {m.loans.filter((l) => coordOf(l.id)).map((l) => (
           <NodeCard
             key={l.id}
             id={l.id}

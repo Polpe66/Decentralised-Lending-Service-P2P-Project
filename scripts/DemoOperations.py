@@ -496,7 +496,7 @@ def main():
     # (c1+c2, peso ~4.79): il lato sì resta c0 (+ eventuale bot). Reject regge finché
     # yes*2 <= totalDisp, cioè (c0 + bot) <= (c1+c2): servirebbe un deposito bot > ~4 ETH per
     # ribaltarlo (irreale, default 0.1). Senza bot rifiuta a maggior ragione (yes = solo c0).
-    banner("Step 16/20 - EXTRA: proposal rejected by weighted vote")
+    banner("Step 16/20 - proposal rejected by weighted vote")
     amt = Web3.to_wei("0.5", "ether")  # <= disposable e <= liquidità: a decidere è SOLO il voto
     print(f"  -> applicant[0] submitProposal(amount={fmt_eth(amt)}, rate=10%, duration=20, btcHash)")
     rcpt = send_tx(w3, a0, pool.functions.submitProposal(amt, 10, 20, btc_hash), gas=400_000)
@@ -510,10 +510,10 @@ def main():
     rcpt = send_tx(w3, a0, pool.functions.resolveProposal(pid), gas=3_000_000)
     print_events(rcpt, pool, ["ProposalApproved", "ProposalRejected"])
     addr, _ = lookup_loan_address(rcpt, pool)
-    print(f"  esito: {'REJECTED - nessun loan (yes pesati <= 50% del disposable)' if addr is None else 'APPROVED ' + addr}")
+    print(f"  result: {'REJECTED - no loan (weighted yes <= 50% of disposable)' if addr is None else 'APPROVED ' + addr}")
 
     # Step 17: reject per CHECK LIQUIDITA' fallito (BTC address mai aggiornato -> saldo 0)
-    banner("Step 17/20 - EXTRA: rejected by failed BTC liquidity check")
+    banner("Step 17/20 - rejected by failed BTC liquidity check")
     bad_btc = "1BitcoinEaterAddressDontSendf59kuE"  # indirizzo-bruciato: oracolo non ha mai scritto un saldo -> 0
     bad_hash = Web3.keccak(text=bad_btc)
     amt = Web3.to_wei("0.5", "ether")
@@ -523,34 +523,34 @@ def main():
     pid = parse_events(rcpt, pool, "ProposalSubmitted")[0]["args"]["proposalId"]
     for voter in contributors:  # tutti APPROVANO: non basta, la liquidità fallisce prima del conteggio voti
         send_tx(w3, voter, pool.functions.vote(pid, True), gas=200_000)
-    print("    tutti i contributor votano APPROVE")
+    print("    all contributors vote APPROVE")
     mine_blocks(w3, pool.functions.PROPOSAL_VOTING_PERIOD().call() + 1)
     rcpt = send_tx(w3, a0, pool.functions.resolveProposal(pid), gas=3_000_000)
     print_events(rcpt, pool, ["ProposalApproved", "ProposalRejected"])
     addr, _ = lookup_loan_address(rcpt, pool)
-    print(f"  esito: {'REJECTED - liquidità BTC insufficiente (anche con tutti APPROVE)' if addr is None else 'APPROVED ' + addr}")
+    print(f"  result: {'REJECTED - BTC liquidity insufficient (also with all APPROVE)' if addr is None else 'APPROVED ' + addr}")
 
     # Step 18: reject per DISPOSABLE insufficiente (amount > fondi disponibili totali).
     # BULLETPROOF anche con YesMan: il bot deposita e alza totalDisposable, quindi scegliamo
     # un amount (50 ETH) ben oltre il massimo disponibile possibile (contributor ~5.7 + bot al
     # più ~5 = ~10.7) ma sotto la liquidità BTC (1501 ETH), così la bocciatura scatta sempre sul
     # controllo disposable (che è il primo) e non su liquidità o voto.
-    banner("Step 18/20 - EXTRA: rejected by insufficient disposable")
+    banner("Step 18/20 - rejected by insufficient disposable")
     amt = Web3.to_wei("50", "ether")  # >> qualsiasi totalDisposable possibile, < liquidità 1501 ETH
     print(f"  totalDisposable={fmt_eth(pool.functions.totalDisposable().call())}  <  amount={fmt_eth(amt)}  (liquidità OK ma fondi insufficienti)")
     rcpt = send_tx(w3, a0, pool.functions.submitProposal(amt, 10, 20, btc_hash), gas=400_000)
     pid = parse_events(rcpt, pool, "ProposalSubmitted")[0]["args"]["proposalId"]
     for voter in contributors:
         send_tx(w3, voter, pool.functions.vote(pid, True), gas=200_000)
-    print("    tutti i contributor votano APPROVE")
+    print("    all contributors vote APPROVE")
     mine_blocks(w3, pool.functions.PROPOSAL_VOTING_PERIOD().call() + 1)
     rcpt = send_tx(w3, a0, pool.functions.resolveProposal(pid), gas=3_000_000)
     print_events(rcpt, pool, ["ProposalApproved", "ProposalRejected"])
     addr, _ = lookup_loan_address(rcpt, pool)
-    print(f"  esito: {'REJECTED - disposable < amount (controllo prima del voto)' if addr is None else 'APPROVED ' + addr}")
+    print(f"  result: {'REJECTED - disposable < amount (check before vote)' if addr is None else 'APPROVED ' + addr}")
 
     # Step 19: OVERPAYMENT - ripaga piu' del dovuto -> l'eccesso finisce in compensationPool
-    banner("Step 19/20 - EXTRA: overpayment -> excess to compensation pool")
+    banner("Step 19/20 - overpayment -> excess to compensation pool")
     amt = Web3.to_wei("0.5", "ether")
     print(f"  -> applicant[0] submitProposal(amount={fmt_eth(amt)}, rate=20%, duration=30, btcHash) + tutti APPROVE")
     rcpt = send_tx(w3, a0, pool.functions.submitProposal(amt, 20, 30, btc_hash), gas=400_000)
