@@ -20,7 +20,7 @@ python3 scripts/DemoOperations.py
 
 
 4rd terminal
-python3 scripts/AutoVoter.py
+python3 scripts/YesMan.py
 
 ---------------- gas measuraments instructions ----------------
 
@@ -32,3 +32,9 @@ python3 scripts/GasMeasurement.py
 
 
 output -> data/gas_report.csv
+
+
+
+
+------- compile pdf from tex ----
+ pdflatex -interaction=nonstopmode report.tex && pdflatex -interaction=nonstopmode report.tex

@@ -1,66 +1,68 @@
-# Decentralised Lending Service
-**Peer2Peer Systems and Blockchains — A.A. 2025/26**
+# P2PBC 2026 — Decentralised Lending Service
 
-A decentralised lending pool on Ethereum with a Bitcoin liquidity oracle.
+Run all commands from the `P2PBC2026Project/` directory.
 
-## Project structure
+## Required versions
 
-```
-contracts/
-  interfaces/       # Solidity interfaces
-  LendingPool.sol   # Main pool contract (contributors, voting, proposals)
-  LoanManager.sol   # Per-loan contract (deployed on approval)
-  BitcoinOracle.sol # On-chain oracle endpoint
-scripts/
-  setup.py          # Initial chain + contract deployment
-  demo.py           # End-to-end demo with balance prints
-  contributor_bot.py# Auto-approve voting bot
-  gas_measurement.py# Gas cost measurement for all operations
-oracle/
-  btc_oracle.py     # Off-chain oracle (reads Bitcoin blocks 1–131000)
-test/
-  LendingService.test.js  # Hardhat test suite
-data/
-  keystore/         # Ethereum account keystore (passwords NOT committed)
-```
+| Component | Version        |
+|-----------|---------       |
+| Geth      | 1.13.15-stable |
+| Node.js   | v20.20.1       |
+| npm       | 10.8.2         |
+| Python    | 3.12.3         |
+| Hardhat   | ^2.22.0        |
 
-## Requirements
+### Python dependencies (venv)
 
-- Node.js >= 20, npm >= 10
-- Python 3.12+
-- geth (go-ethereum)
+Installed in the `venv` virtualenv (`source venv/bin/activate`):
 
-## Setup
+| Package     | Version |
+|-------------|---------|
+| web3        | 7.16.0  |
+
+
+## Startup
+
+### First terminal
 
 ```bash
-# Install JS dependencies
-npm install
+geth --datadir data removedb #only to remove old chain data
 
-# Install Python dependencies
-pip install web3 bitcoin requests
-
-# Start local private chain
 geth --datadir data init project2526genesis.json
-geth --datadir data --networkid 202526 --http --http.api eth,web3,personal,net \
-     --unlock 0xd278d247A52C550508ea2b2C9321d816238fb523 --password <(echo project2526) \
-     --mine --miner.etherbase 0xd278d247A52C550508ea2b2C9321d816238fb523 console
 
-# Deploy contracts and create accounts
-python3 scripts/setup.py
-
-# Run demo
-python3 scripts/demo.py
+geth --datadir data --networkid 202526 \
+  --http --http.api eth,net,web3,personal,debug,admin \
+  --http.corsdomain '*' --allow-insecure-unlock \
+  --nodiscover --maxpeers 0 \
+  --mine --miner.gaslimit 30000000 \
+  --mine.etherbase 0xd278d247A52C550508ea2b2C9321d816238fb523 \
+  --unlock 0xd278d247A52C550508ea2b2C9321d816238fb523 \
+  --password 0xd278d247A52C550508ea2b2C9321d816238fb523psw.txt
 ```
 
-## Testing (Hardhat)
+### Second terminal
 
 ```bash
-npx hardhat test
+source venv/bin/activate
+
+npx hardhat compile
+
+python3 scripts/InitialSetup.py #wait the end of the execution before proceeding
+
+OPERATOR_PRIVATE_KEY=$(jq -r .oracle_operator.key data/accounts.json) \
+  python3 oracle/oracle_service.py
 ```
 
-## Private chain info
+### Third terminal (optional)
 
-- Chain ID: `202526`
-- Consensus: Clique PoA (block time: 10s)
-- Pre-funded sealer: `0xd278d247A52C550508ea2b2C9321d816238fb523`
-  - Used ONLY for funding new accounts, NOT for deploying contracts
+```bash
+source venv/bin/activate
+python3 scripts/YesMan.py
+```
+
+### Fourth terminal
+
+```bash
+source venv/bin/activate
+python3 scripts/DemoOperations.py
+```

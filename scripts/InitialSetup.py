@@ -1,5 +1,5 @@
 # permette di fare bootstrap della catena privata: crea account EOA, li finanzia, deploy contratti, scrive file di config.
-# Va eseguito una volta all'inizio, prima di lanciare i servizi che dipendono da questi dati (oracle_service.py, demo.py, auto_voter.py).
+# Va eseguito una volta all'inizio, prima di lanciare i servizi che dipendono da questi dati (oracle_service.py, demo.py, YesMan.py).
 
 import json 
 import os 
@@ -41,7 +41,7 @@ M_APPLICANTS = int(os.environ.get("M_APPLICANTS", "2")) # numero di account "app
 # quanti ETH genesis deve inviare a ogni account creato
 FUND_DEPLOYER = float(os.environ.get("FUND_DEPLOYER", "10")) # si occupa del deploy dei contratti
 FUND_OPERATOR = float(os.environ.get("FUND_OPERATOR", "1")) # operatore dell'oracolo
-FUND_AUTO_VOTER = float(os.environ.get("FUND_AUTO_VOTER", "5")) # account che simula un voter automatico
+FUND_YES_MAN = float(os.environ.get("FUND_YES_MAN", "5")) # account che simula un voter automatico
 FUND_CONTRIBUTOR = float(os.environ.get("FUND_CONTRIBUTOR", "5")) # account che simula un contributor
 FUND_APPLICANT = float(os.environ.get("FUND_APPLICANT", "1")) # account che simula un applicant
 
@@ -119,13 +119,13 @@ def main():
     print("\nStep 1: creating accounts")
     deployer = Account.create() # genera localmente una nuova coppia chiave privata/pubblica in modo casuale e da qua ricava l'indirizzo dell'account, che è l'hash della chiave pubblica
     oracle_operator = Account.create()
-    auto_voter = Account.create()
+    yes_man = Account.create()
     contributors = [Account.create() for _ in range(N_CONTRIBUTORS)]
     applicants = [Account.create() for _ in range(M_APPLICANTS)]
 
     print(f"  deployer:        {deployer.address}")
     print(f"  oracle_operator: {oracle_operator.address}")
-    print(f"  auto_voter:      {auto_voter.address}")
+    print(f"  yes_man:         {yes_man.address}")
     for i, a in enumerate(contributors):
         print(f"  contributor[{i}]: {a.address}")
     for i, a in enumerate(applicants):
@@ -152,7 +152,7 @@ def main():
     transfers = [ # costruzione lista trasferimenti ruolo indirizzo importo da inviare
         ("deployer", deployer.address, FUND_DEPLOYER),
         ("oracle_operator", oracle_operator.address, FUND_OPERATOR),
-        ("auto_voter", auto_voter.address, FUND_AUTO_VOTER),
+        ("yes_man", yes_man.address, FUND_YES_MAN),
     ]
     # itera sui contributor e applicant creati per aggiungerli alla lista dei trasferimenti, con un'etichetta che indica il ruolo e l'indice (es. contributor[0], applicant[1], ecc.)
     for i, a in enumerate(contributors):
@@ -211,7 +211,7 @@ def main():
     assert owner.lower() == deployer.address.lower(), "owner must be deployer"
     assert oracle_read.lower() == oracle_addr.lower(), "oracle address mismatch"
 
-    # scrive i file di config con gli indirizzi dei contratti e degli account creati, per permettere agli altri servizi (oracle_service.py, demo.py, auto_voter.py) di caricare queste informazioni senza hardcodarle. I file sono in JSON e contengono sia gli indirizzi che le chiavi private (in hex) degli account, e per i contratti l'indirizzo e l'ABI necessari per interagire con loro.
+    # scrive i file di config con gli indirizzi dei contratti e degli account creati, per permettere agli altri servizi (oracle_service.py, demo.py, YesMan.py) di caricare queste informazioni senza hardcodarle. I file sono in JSON e contengono sia gli indirizzi che le chiavi private (in hex) degli account, e per i contratti l'indirizzo e l'ABI necessari per interagire con loro.
     print("\nStep 5: writing config files")
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -221,7 +221,7 @@ def main():
             "address": oracle_operator.address,
             "key": oracle_operator.key.hex(),
         },
-        "auto_voter": {"address": auto_voter.address, "key": auto_voter.key.hex()},
+        "yes_man": {"address": yes_man.address, "key": yes_man.key.hex()},
         "contributors": [
             {"address": a.address, "key": a.key.hex()} for a in contributors
         ],
@@ -258,7 +258,7 @@ def main():
     for label, addr in [
         ("Deployer", deployer.address),
         ("Operator", oracle_operator.address),
-        ("AutoVoter", auto_voter.address),
+        ("YesMan", yes_man.address),
     ]:
         print(
             f"  {label:<10} {addr}  balance: "

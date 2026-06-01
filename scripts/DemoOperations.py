@@ -491,7 +491,7 @@ def main():
     # eccesso versato alla compensation pool. Ogni scenario crea una nuova proposta.
 
     # Step 16: proposta valida (disposable e liquidità OK) ma BOCCIATA dal voto pesato.
-    # BULLETPROOF anche con AutoVoter attivo: il bot vota sempre APPROVE, quindi la maggioranza
+    # BULLETPROOF anche con YesMan attivo: il bot vota sempre APPROVE, quindi la maggioranza
     # di reject deve reggere ANCHE col suo sì. Facciamo rifiutare i due contributor più grandi
     # (c1+c2, peso ~4.79): il lato sì resta c0 (+ eventuale bot). Reject regge finché
     # yes*2 <= totalDisp, cioè (c0 + bot) <= (c1+c2): servirebbe un deposito bot > ~4 ETH per
@@ -531,7 +531,7 @@ def main():
     print(f"  esito: {'REJECTED - liquidità BTC insufficiente (anche con tutti APPROVE)' if addr is None else 'APPROVED ' + addr}")
 
     # Step 18: reject per DISPOSABLE insufficiente (amount > fondi disponibili totali).
-    # BULLETPROOF anche con AutoVoter: il bot deposita e alza totalDisposable, quindi scegliamo
+    # BULLETPROOF anche con YesMan: il bot deposita e alza totalDisposable, quindi scegliamo
     # un amount (50 ETH) ben oltre il massimo disponibile possibile (contributor ~5.7 + bot al
     # più ~5 = ~10.7) ma sotto la liquidità BTC (1501 ETH), così la bocciatura scatta sempre sul
     # controllo disposable (che è il primo) e non su liquidità o voto.
