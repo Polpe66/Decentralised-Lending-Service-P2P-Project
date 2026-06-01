@@ -10,12 +10,12 @@ import "./LoanContract.sol";
 interface IBitcoinOracle {
     function getEthEquivalent(bytes32 btcAddressHash) external view returns (uint256);
     function requestUpdate(bytes32 btcAddressHash) external payable;
-    function MIN_ORACLE_FEE() external view returns (uint256); // getter
+    function MIN_ORACLE_FEE() external view returns (uint256);                                          // getter
 }
 
 contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     // guardia manuale per la reentrancy
-    uint256 private _reentrancyStatus; // 1 = free, 2 = entered
+    uint256 private _reentrancyStatus;                                                        // 1 = free, 2 = entered
     
     uint256 public constant MIN_DEPOSIT = 100_000; // wei
     uint256 public constant INITIAL_COLLATERAL_PCT = 50;
@@ -29,9 +29,9 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     uint256 public compensationPool; 
     uint256 public collateralPercentage;
 
-    mapping(address => uint256) public deposits; // ether depositati (inclusi i locked)
-    mapping(address => uint256) public lockedValue; // solo ether locked
-    mapping(address => bool) public isActiveLoan; // loan attivi
+    mapping(address => uint256) public deposits;                                    // ether depositati (inclusi i locked)
+    mapping(address => uint256) public lockedValue;                                 // solo ether locked
+    mapping(address => bool) public isActiveLoan;                                   // loan attivi
 
    
 
@@ -44,18 +44,18 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     struct Proposal {
         address applicant;
         uint256 amount;
-        uint8 interestRate; // 1-100
-        uint256 duration; // durata prestito
-        bytes32 btcAddressHash; // indirizzo btc hashato per verificare liquidità
+        uint8 interestRate;                                                     // 1-100
+        uint256 duration;                                                       // durata prestito
+        bytes32 btcAddressHash;                                                 // indirizzo btc hashato per verificare liquidità
         uint256 submittedBlock;
         ProposalStatus status;
-        address[] approveVoters; // array di indirizzi che hanno votato true, è iterabile
+        address[] approveVoters;                                                // array di indirizzi che hanno votato true, è iterabile
         mapping(address => bool) hasVoted;
-        mapping(address => bool) voteApprove; // struttura dati che indica cosa è stato votato per ciascun indirizzo, non iterabile
+        mapping(address => bool) voteApprove;                                   // struttura dati che indica cosa è stato votato per ciascun indirizzo, non iterabile
     }
 
-    uint256 public proposalCount; // id proposte
-    mapping(uint256 => Proposal) internal _proposals; // internal -> no getter automatico, fornito da noi
+    uint256 public proposalCount;                                               // id proposte
+    mapping(uint256 => Proposal) internal _proposals;                           // internal -> no getter automatico, fornito da noi
 
     // lista ordinata dei contributor
     address[] private _contributorList;
@@ -153,28 +153,28 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         require(interestRate >= 1 && interestRate <= 100, "Rate out of range");
         require(duration > 0, "Zero duration");
 
-        proposalId = proposalCount++; //id incrementale
-        Proposal storage p = _proposals[proposalId]; // puntatore a p 
+        proposalId = proposalCount++;                                                       //id incrementale
+        Proposal storage p = _proposals[proposalId];                                        // puntatore a p 
         p.applicant = msg.sender;
         p.amount = amount;
         p.interestRate = interestRate;
         p.duration = duration;
         p.btcAddressHash = btcAddressHash;
-        p.submittedBlock = block.number; // block.number variabile globale
+        p.submittedBlock = block.number;                                                    // block.number variabile globale
 
         emit ProposalSubmitted(proposalId, msg.sender, amount);
     }
 
     function vote(uint256 proposalId, bool approve) external {
         Proposal storage p = _proposals[proposalId];
-        require(p.applicant != address(0), "Proposal does not exist"); // address(0) indica indirizzo non inizializzato
+        require(p.applicant != address(0), "Proposal does not exist");                      // address(0) indica indirizzo non inizializzato
         require(p.status == ProposalStatus.Active, "Proposal not active");
         require(isContributor(msg.sender), "Not a contributor");
         require(!p.hasVoted[msg.sender], "Already voted");
 
-        p.hasVoted[msg.sender] = true; // indichiamo che ha votato
+        p.hasVoted[msg.sender] = true;                                                      // indichiamo che ha votato
         p.voteApprove[msg.sender] = approve;
-        if (approve) { // array salva solo contriburs che hanno votato si
+        if (approve) {                                                                      // array salva solo contriburs che hanno votato si
             p.approveVoters.push(msg.sender);
         }
 
@@ -187,22 +187,22 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         return (p.applicant, p.amount, p.interestRate, p.duration, p.btcAddressHash, p.submittedBlock, p.approveVoters.length, p.status);
     }
 
-    function hasVotedOn(uint256 proposalId, address voter) external view returns (bool) { // usata in yesman per verificare se ha già votato
+    function hasVotedOn(uint256 proposalId, address voter) external view returns (bool) {                                                   // usata in yesman per verificare se ha già votato
         return _proposals[proposalId].hasVoted[voter];
     }
 
-    function getVoteApprove(uint256 proposalId, address voter) external view returns (bool) { // usata nei test per verificare che il voto è stato registrato correttamente
+    function getVoteApprove(uint256 proposalId, address voter) external view returns (bool) {                                               // usata nei test per verificare che il voto è stato registrato correttamente
         return _proposals[proposalId].voteApprove[voter];
     }
 
-    function resolveProposal(uint256 proposalId) external nonReentrant { // 
+    function resolveProposal(uint256 proposalId) external nonReentrant { 
         Proposal storage p = _proposals[proposalId]; 
         require(p.applicant != address(0), "Proposal does not exist");
         require(p.applicant == msg.sender, "Not applicant");
         require(p.status == ProposalStatus.Active, "Proposal not active");
-        require(block.number > p.submittedBlock + PROPOSAL_VOTING_PERIOD,"Voting period not over"); // si può risolvere solo dopo 12 blocchi
+        require(block.number > p.submittedBlock + PROPOSAL_VOTING_PERIOD,"Voting period not over");                                         // si può risolvere solo dopo 12 blocchi
 
-        uint256 totalDisp = totalDisposable(); // fondi totali - fondi bloccati
+        uint256 totalDisp = totalDisposable();                                                                                              // fondi totali - fondi bloccati
         
         // rifiuto per insufficienza di fondi
         if (totalDisp < p.amount) {
@@ -221,28 +221,28 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
 
         uint256 weightedYes = 0;
         for (uint256 i = 0; i < p.approveVoters.length; i++) {
-            weightedYes += disposableValue(p.approveVoters[i]); //somma fondi disponibili di chi ha votato sì
+            weightedYes += disposableValue(p.approveVoters[i]);                             //somma fondi disponibili di chi ha votato sì
         }
-        if (weightedYes * 2 <= totalDisp) { // somma fondi deve essere maggiore della metà dei fondi disponibili totali (51%)
+        if (weightedYes * 2 <= totalDisp) {                                                 // somma fondi deve essere maggiore della metà dei fondi disponibili totali (51%)
             p.status = ProposalStatus.Rejected;
             emit ProposalRejected(proposalId);
             return;
         }
-        p.status = ProposalStatus.Approved; // se supera tutte le condizioni, la proposta è approvata
+        p.status = ProposalStatus.Approved;                                                 // se supera tutte le condizioni, la proposta è approvata
 
-        uint256 n = _contributorList.length; // numero di contributors 
+        uint256 n = _contributorList.length;                                                // numero di contributors 
 
-        address[] memory addrs = new address[](n); // array dinamico di dimensione massima n (tutti i contributors), compattato da count per passarlo al LoanContract
-        uint256[] memory shares = new uint256[](n); // array dinamico di dimensione massima n (tutti i contributors), compattato da count per passarlo al LoanContract
-        uint256 count = 0; // contatore di quanti contributors effettivamente partecipano al prestito (share > 0)
-        uint256 loanedAmount = 0; // somma di tutti gli share, dovrebbe essere uguale a p.amount o leggermente inferiore per effetto dell'arrotondamento 
+        address[] memory addrs = new address[](n);                                          // array dinamico di dimensione massima n (tutti i contributors), compattato da count per passarlo al LoanContract
+        uint256[] memory shares = new uint256[](n);                                         // array dinamico di dimensione massima n (tutti i contributors), compattato da count per passarlo al LoanContract
+        uint256 count = 0;                                                                  // contatore di quanti contributors effettivamente partecipano al prestito (share > 0)
+        uint256 loanedAmount = 0;                                                           // somma di tutti gli share, dovrebbe essere uguale a p.amount o leggermente inferiore per effetto dell'arrotondamento 
 
         for (uint256 i = 0; i < n; i++) { 
             address c = _contributorList[i];
             uint256 disp = disposableValue(c);
-            if (disp == 0) continue; // contributor senza fondi disponibili, skip per risparmiare gas
+            if (disp == 0) continue;                                                        // contributor senza fondi disponibili, skip per risparmiare gas
             uint256 share = (p.amount * disp) / totalDisp;
-            if (share == 0) continue; // share zero dopo arrotondamento, skip per risparmiare gas
+            if (share == 0) continue;                                                       // share zero dopo arrotondamento, skip per risparmiare gas
             addrs[count] = c;
             shares[count] = share;
             loanedAmount += share;
@@ -261,7 +261,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         // trimming degli array a misura di count per passaggio al LoanContract
         address[] memory finalAddrs = new address[](count);
         uint256[] memory finalShares = new uint256[](count);
-        for (uint256 i = 0; i < count; i++) { // copia dei primi count elementi da addrs/shares a finalAddrs/finalShares per risparmiare gas al passaggio al LoanContract
+        for (uint256 i = 0; i < count; i++) {                                                   // copia dei primi count elementi da addrs/shares a finalAddrs/finalShares per risparmiare gas al passaggio al LoanContract
             finalAddrs[i] = addrs[i];
             finalShares[i] = shares[i];
         }
