@@ -3,8 +3,11 @@ pragma solidity ^0.8.22;
 
 import "../LendingPool.sol";
 
+
 contract LendingPoolV2 is LendingPool {
     uint256 public extraSlot;
+    
+    /// @custom:oz-upgrades-validate-as-initializer
     function initializeV2() external reinitializer(2) {}
 
     function version() external pure returns (string memory) {

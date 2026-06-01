@@ -42,14 +42,22 @@ OPERATOR_PRIVATE_KEY=$(jq -r .oracle_operator.key data/accounts.json) \
   python3 oracle/oracle_service.py
 ```
 
-### Third terminal (optional)
+### Third terminal (optional) Frontend
+
+```bash
+source venv/bin/activate
+cd frontend && npm run dev
+# open localhost address link
+```
+
+### Fourth terminal (optional) YesMan
 
 ```bash
 source venv/bin/activate
 python3 scripts/YesMan.py
 ```
 
-### Fourth terminal
+### Fifth terminal
 
 ```bash
 source venv/bin/activate
