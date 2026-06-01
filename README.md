@@ -26,18 +26,7 @@ Installed in the `venv` virtualenv (`source venv/bin/activate`):
 ### First terminal
 
 ```bash
-geth --datadir data removedb #only to remove old chain data
-
-geth --datadir data init project2526genesis.json
-
-geth --datadir data --networkid 202526 \
-  --http --http.api eth,net,web3,personal,debug,admin \
-  --http.corsdomain '*' --allow-insecure-unlock \
-  --nodiscover --maxpeers 0 \
-  --mine --miner.gaslimit 30000000 \
-  --mine.etherbase 0xd278d247A52C550508ea2b2C9321d816238fb523 \
-  --unlock 0xd278d247A52C550508ea2b2C9321d816238fb523 \
-  --password 0xd278d247A52C550508ea2b2C9321d816238fb523psw.txt
+./scripts/start_chain.sh
 ```
 
 ### Second terminal
