@@ -5,6 +5,7 @@ import { provider, pool, oracle, loanAt } from "../eth";
 import {
   CONTRIBUTORS,
   APPLICANTS,
+  YESMAN,
   DEFAULT_BTC_ADDRESS,
 } from "../config";
 import { fetchEvents } from "../events";
@@ -14,15 +15,17 @@ const VIEW_W = 1000;
 const VIEW_H = 580;
 
 // Fixed node positions in the SVG viewBox coordinate space.
+// Contributor nodes are placed dynamically along the bottom row (see coordOf),
+// so the layout adapts to 3 contributors or 4 when the YesMan bot has joined.
 const POS = {
   pool: [500, 300],
   oracle: [150, 84],
   app0: [855, 84],
   app1: [892, 320],
-  c0: [270, 478],
-  c1: [500, 500],
-  c2: [730, 478],
 };
+const CONTRIB_ROW_Y = 485;
+const CONTRIB_X0 = 260;
+const CONTRIB_X1 = 770;
 // Left column slots for dynamically-discovered loan contracts. Node cards have a
 // FIXED pixel height, so the gap to the oracle (top) and contrib[0] (bottom) is
 // kept wide enough that they never overlap even when the diagram is rendered in
@@ -33,9 +36,11 @@ const LOAN_SLOTS = [
   [112, 455],
 ];
 
-// addr (lowercase) -> diagram node id, for the demo cast.
+// addr (lowercase) -> diagram node id, for the demo cast. YesMan, if present,
+// takes the next contributor id after the base three (e.g. c3).
 const ADDR_NODE = Object.fromEntries([
   ...CONTRIBUTORS.map((c, i) => [c.address.toLowerCase(), `c${i}`]),
+  ...(YESMAN ? [[YESMAN.address.toLowerCase(), `c${CONTRIBUTORS.length}`]] : []),
   ...APPLICANTS.map((a, i) => [a.address.toLowerCase(), `app${i}`]),
 ]);
 
@@ -71,16 +76,28 @@ function useSchemaModel(refreshKey) {
           oracle.getEthEquivalent(btcHash).catch(() => 0n),
         ]);
 
+        const readContrib = async (c, id) => ({
+          id,
+          ...c,
+          wallet: await provider.getBalance(c.address),
+          deposits: await pool.deposits(c.address),
+          locked: await pool.lockedValue(c.address),
+          disposable: await pool.disposableValue(c.address),
+        });
+
         const contributors = await Promise.all(
-          CONTRIBUTORS.map(async (c, i) => ({
-            id: `c${i}`,
-            ...c,
-            wallet: await provider.getBalance(c.address),
-            deposits: await pool.deposits(c.address),
-            locked: await pool.lockedValue(c.address),
-            disposable: await pool.disposableValue(c.address),
-          }))
+          CONTRIBUTORS.map((c, i) => readContrib(c, `c${i}`))
         );
+
+        // Add the YesMan bot only once it has joined the pool as a contributor.
+        if (YESMAN) {
+          const joined = await pool.isContributor(YESMAN.address).catch(() => false);
+          if (joined) {
+            contributors.push(
+              await readContrib(YESMAN, `c${CONTRIBUTORS.length}`)
+            );
+          }
+        }
 
         const applicants = await Promise.all(
           APPLICANTS.map(async (a, i) => ({
@@ -295,7 +312,16 @@ export default function Schema() {
     (m?.loans || []).forEach((l, i) => {
       if (LOAN_SLOTS[i]) slots[l.id] = LOAN_SLOTS[i];
     });
-    return (id) => POS[id] || slots[id] || null;
+    // Spread contributors evenly across the bottom row (handles 3 or 4 nodes).
+    const contribs = {};
+    const list = m?.contributors || [];
+    const n = list.length;
+    list.forEach((c, i) => {
+      const x =
+        n <= 1 ? 500 : CONTRIB_X0 + ((CONTRIB_X1 - CONTRIB_X0) * i) / (n - 1);
+      contribs[c.id] = [x, CONTRIB_ROW_Y];
+    });
+    return (id) => POS[id] || slots[id] || contribs[id] || null;
   }, [m]);
 
   // Pulse the diagram whenever the newest event changes. Keep loanApplicant in
@@ -335,7 +361,9 @@ export default function Schema() {
     seen.add(id);
     edges.push({ id, a: ca, b: cb });
   };
-  ["c0", "c1", "c2", "app0", "app1", "oracle"].forEach((n) => addEdge(n, "pool"));
+  [...m.contributors.map((c) => c.id), "app0", "app1", "oracle"].forEach((n) =>
+    addEdge(n, "pool")
+  );
   m.loans.forEach((l) => {
     addEdge(l.id, "pool");
     if (loanApplicant[l.id]) addEdge(l.id, loanApplicant[l.id]);
@@ -477,7 +505,14 @@ export default function Schema() {
             active={active.nodes.has(c.id)}
             tone="contributor"
           >
-            <div className="font-semibold text-emerald-300">{c.label}</div>
+            <div className="font-semibold text-emerald-300 flex items-center gap-1">
+              {c.label}
+              {c.bot && (
+                <span className="px-1 rounded bg-emerald-500/20 text-emerald-300 text-[9px] uppercase">
+                  bot
+                </span>
+              )}
+            </div>
             <Row k="wallet" v={fmtEth(c.wallet, 3)} />
             <Row k="deposits" v={fmtEth(c.deposits, 3)} />
             <Row k="locked" v={fmtEth(c.locked, 3)} />

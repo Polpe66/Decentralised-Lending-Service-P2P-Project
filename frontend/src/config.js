@@ -36,6 +36,12 @@ export const APPLICANTS = accounts.applicants.slice(0, 2).map((a, i) => ({
   short: `A${i}`,
 }));
 
+// Optional YesMan bot: an extra contributor that deposits and always votes
+// APPROVE. Present in the diagram only when it has actually joined the pool.
+export const YESMAN = accounts.yes_man?.address
+  ? { address: accounts.yes_man.address, label: "YesMan", short: "YM", bot: true }
+  : null;
+
 export const ORACLE_OPERATOR = {
   address: accounts.oracle_operator.address,
   label: "Oracle operator",
@@ -45,6 +51,7 @@ export const ORACLE_OPERATOR = {
 export const ADDR_LABELS = Object.fromEntries(
   [
     ...CONTRIBUTORS.map((c) => [c.address, { ...c, role: "contributor" }]),
+    ...(YESMAN ? [[YESMAN.address, { ...YESMAN, role: "contributor" }]] : []),
     ...APPLICANTS.map((a) => [a.address, { ...a, role: "applicant" }]),
     [ORACLE_OPERATOR.address, { ...ORACLE_OPERATOR, role: "oracle" }],
   ].map(([addr, v]) => [addr.toLowerCase(), v])
