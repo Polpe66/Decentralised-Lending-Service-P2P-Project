@@ -9,7 +9,7 @@ submitProposal,"valid (amount<=disp, btc ok)",184376,0.000184376000
 vote,approve,123881,0.000123881000
 vote,reject,59653,0.000059653000
 resolveProposal,Approved (N=2),1972086,0.001972086000
-resolveProposal,Approved (N=5),2346916,0.002346916000
+resolveProposal,Approved (N=5),2344914,0.002344914000
 resolveProposal,Rejected (pool low),63139,0.000063139000
 resolveProposal,Rejected (btc liquidity),73084,0.000073084000
 resolveProposal,Rejected (weighted vote),82345,0.000082345000
@@ -20,4 +20,4 @@ requestCompensation,first call (marks Failed),85212,0.000085212000
 requestCompensation,subsequent (refill claim),47698,0.000047698000
 partialRepay,on Failed loan (proportional split),150058,0.000150058000
 terminate,Successful loan,27696,0.000027696000
-upgradeToAndCall,UUPS v2 swap,37692,0.000037692000
+upgradeToAndCall,UUPS v2 swap,37704,0.000037704000
