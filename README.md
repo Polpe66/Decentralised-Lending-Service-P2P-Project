@@ -71,6 +71,6 @@ python3 scripts/DemoOperations.py
 npx hardhat test
 # needed the geth node activated
 source venv/bin/activate
-python3 scripts/GasMeasurament.py
+python3 scripts/GasMeasurement.py
 
 ```
