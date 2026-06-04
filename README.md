@@ -1,4 +1,4 @@
-# P2PBC 2026 — Decentralised Lending Service
+# P2PBC 2026 - Decentralised Lending Service
 
 Run all commands from the `P2PBC2026Project/` directory.
 
@@ -12,27 +12,28 @@ Run all commands from the `P2PBC2026Project/` directory.
 | Python    | 3.12.3         |
 | Hardhat   | ^2.22.0        |
 
-### Python dependencies (venv)
+### Python dependencies and frontend dependencies (venv)
 
-Installed in the `venv` virtualenv (`source venv/bin/activate`):
+Create the virtualenv and install dependencies (first time only):
 
-| Package     | Version |
-|-------------|---------|
-| web3        | 7.16.0  |
-
+```bash
+./scripts/install.sh
+```
 
 ## Startup
+
+Remember to put .blk files in ./chaindata
 
 ### First terminal
 
 ```bash
-./scripts/start_chain.sh
+./scripts/start_chain.sh    
 ```
 
 ### Second terminal
 
 ```bash
-source venv/bin/activate
+source venv/bin/activate  #if not already activated automatically use this command
 
 npx hardhat compile
 
@@ -45,7 +46,7 @@ OPERATOR_PRIVATE_KEY=$(jq -r .oracle_operator.key data/accounts.json) \
 ### Third terminal (optional) Frontend
 
 ```bash
-source venv/bin/activate
+source venv/bin/activate    #if not already activated automatically use this command
 cd frontend && npm run dev
 # open localhost address link
 ```
@@ -53,14 +54,14 @@ cd frontend && npm run dev
 ### Fourth terminal (optional) YesMan
 
 ```bash
-source venv/bin/activate
+source venv/bin/activate    #if not already activated automatically use this command
 python3 scripts/YesMan.py
 ```
 
 ### Fifth terminal
 
 ```bash
-source venv/bin/activate
+source venv/bin/activate    #if not already activated automatically use this command
 python3 scripts/DemoOperations.py
 ```
 
@@ -70,7 +71,7 @@ python3 scripts/DemoOperations.py
 
 npx hardhat test
 # needed the geth node activated
-source venv/bin/activate
+source venv/bin/activate          #if not already activated automatically use this command
 python3 scripts/GasMeasurement.py
 
 ```
