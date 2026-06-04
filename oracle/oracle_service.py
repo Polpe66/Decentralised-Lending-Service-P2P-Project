@@ -103,24 +103,24 @@ def sort_blocks_by_height(blocks):
         current_prev = current_hash                                                         # aggiorniamo current_prev all'hash del blocco corrente, in modo che nella prossima iterazione cercheremo il blocco successivo che ha prevhash uguale a questo hash
 
     print(f"Ordering completed.")
-    return ordered # restituisce l'elenco ordinato dei blocchi, partendo dal blocco genesis e seguendo la catena dei prevhash fino a raggiungere il blocco più alto possibile o fino a MAX_BLOCKS
+    return ordered                                                                          # restituisce l'elenco ordinato dei blocchi, partendo dal blocco genesis e seguendo la catena dei prevhash fino a raggiungere il blocco più alto possibile o fino a MAX_BLOCKS
 
 
 
 # funzione per processare un singolo blocco, aggiornando il set di UTXO e i bilanci degli indirizzi.
 def process_block(block, utxos, balances):
-    for tx in block.vtx: # vtx è la lista delle transazioni incluse nel blocco
-        txid_hex = tx.GetTxid().hex() # ottiene l'hash della transazione (txid) usando il metodo GetTxid() dell'oggetto CTransaction, che restituisce l'hash in formato bytes32, e lo converte in esadecimale con .hex() per usarlo come chiave nei dizionari
+    for tx in block.vtx:                                                                    # itera in vtx che è la lista delle transazioni incluse nel blocco e prende la transazione singolarmente
+        txid_hex = tx.GetTxid().hex()                                                       # ottiene l'hash della transazione (txid) usando il metodo GetTxid() dell'oggetto CTransaction, che restituisce l'hash in formato bytes32, e lo converte in esadecimale con .hex() per usarlo come chiave nei dizionari
 
-        if not tx.is_coinbase(): # se la transazione non è una coinbase (cioè non è la prima transazione del blocco che crea nuovi bitcoin), allora dobbiamo processare le sue input (vin) per rimuovere gli UTXO spesi e aggiornare i bilanci degli indirizzi che li detenevano
-            for vin in tx.vin:
-                prev_txid = vin.prevout.hash.hex() # hash transazione precedente da cui proviene l'input, ottenuto dal campo prevout.hash dell'input, che è in formato bytes32, e convertito in esadecimale con .hex() per usarlo come chiave nei dizionari
-                prev_n = vin.prevout.n  # indice dell'output nella transazione precedente a cui si riferisce questo input, ottenuto dal campo prevout.n dell'input, che è un intero
+        if not tx.is_coinbase():                                                            # se la transazione non è una coinbase, allora dobbiamo processare le sue input (vin) per rimuovere gli UTXO spesi e aggiornare i bilanci degli indirizzi che li detenevano
+            for vin in tx.vin:                                                              # prendo l'input singolarmente dalla lista vin
+                prev_txid = vin.prevout.hash.hex()                                          # hash transazione precedente da cui proviene l'input, ottenuto dal campo prevout.hash dell'input, che è in formato bytes32, e convertito in esadecimale con .hex() per usarlo come chiave nei dizionari
+                prev_n = vin.prevout.n                                                      # indice dell'output nella transazione precedente a cui si riferisce questo input, ottenuto dal campo prevout.n dell'input, che è un intero
                 
-                key = (prev_txid, prev_n) # chiave che identifica univocamente un UTXO, composta dall'hash della transazione precedente e dall'indice dell'output a cui si riferisce l'input corrente
+                key = (prev_txid, prev_n)                                                   # chiave che identifica univocamente un UTXO, composta dall'hash della transazione precedente e dall'indice dell'output a cui si riferisce l'input corrente
                 if key in utxos:
-                    addr, val = utxos.pop(key) # se troviamo la chiave del UTXO speso nel dizionario utxos, significa che questo input sta spendendo un UTXO valido
-                    balances[addr] = balances.get(addr, 0) - val # aggiorniamo il bilancio dell'indirizzo che deteneva l'UTXO speso, sottraendo il valore dell'UTXO dal bilancio corrente dell'indirizzo (usando get(addr, 0) per gestire il caso in cui l'indirizzo non abbia un bilancio precedente)
+                    addr, val = utxos.pop(key)                                              # se troviamo la chiave del UTXO speso nel dizionario utxos, significa che questo input sta spendendo un UTXO valido
+                    balances[addr] = balances.get(addr, 0) - val                            # aggiorniamo il bilancio dell'indirizzo che deteneva l'UTXO speso, sottraendo il valore dell'UTXO dal bilancio corrente dell'indirizzo (usando get(addr, 0) per gestire il caso in cui l'indirizzo non abbia un bilancio precedente)
 
         # Aggiungi output (crea nuovi UTXO)
         for n, vout in enumerate(tx.vout): # vout è la lista degli output della transazione, e n è l'indice dell'output nella lista
@@ -135,13 +135,13 @@ def parse_blocks():
     all_blocks = load_all_blocks()                                                          # con la funzione load_all_blocks() carichiamo tutti i blocchi dai file blk.dat, restituendo un dizionario che mappa l'hash del blocco (in esadecimale) a una tupla contenente l'hash del blocco precedente e l'oggetto CBlock deserializzato
 
     # ordinamento blocchi
-    ordered_blocks = sort_blocks_by_height(all_blocks)
+    ordered_blocks = sort_blocks_by_height(all_blocks)                                      # con la funzione sort_blocks_by_height() ordiniamo i blocchi in base alla loro altezza, partendo dal blocco genesis 
 
     print("Processing UTXO set and balances... Please wait 3-4 minutes or until you see 'Parsing completed.'") 
-    utxos = {}     # (txid_hex, n) -> (address, satoshi)
-    balances = {}  # address -> satoshi
+    utxos = {}                                                                              # ci mettiamo la mappa (txid_hex, n) -> (address, satoshi)
+    balances = {}                                                                           # address -> satoshi
 
-    for i, block in enumerate(ordered_blocks):
+    for i, block in enumerate(ordered_blocks):                                              # enumerate itera senza dover farmi gestire contatore, per ciascun blocco chiama la funzione process_block() che aggiorna il set di UTXO e i bilanci degli indirizzi
         process_block(block, utxos, balances)
         if (i + 1) % 10000 == 0:
             print(f"  ... ")
