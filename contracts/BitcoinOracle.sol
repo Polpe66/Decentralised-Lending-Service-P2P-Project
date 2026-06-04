@@ -6,27 +6,27 @@ contract BitcoinOracle {
     uint256 public constant BTC_ETH_RATE = 30;
     uint256 public constant SATOSHI_PER_BTC = 1e8;
 
-    address public immutable operator;
+    address public immutable operator;                                                      // operatore che aggiorna i saldi, immutable indica che deve avvenire una sola volta a deploy time
 
     mapping(bytes32 => uint256) private balances;                                           // keccak256(abi.encodePacked(btcAddressString)) => satoshi balance
 
 
-    event UpdateRequested(bytes32 indexed btcAddressHash,address indexed requester);
-    event BalanceUpdated(bytes32 indexed btcAddressHash, uint256 newBalance);
+    event UpdateRequested(bytes32 indexed btcAddressHash,address indexed requester);        // evento che segnala che un aggiornamento è stato richiesto per un certo BTC address
+    event BalanceUpdated(bytes32 indexed btcAddressHash, uint256 newBalance);               // evento che segnala che il saldo di un certo BTC address è stato aggiornato
 
     constructor() {
         operator = msg.sender;
     }
 
-    modifier onlyOperator() {
+    modifier onlyOperator() {                                                               // modifier creato ad hoc per controllare che chio esegue l'operazione è l'operatore autorizzato
         require(msg.sender == operator, "Only operator can call this");
         _;
     }
 
     // Borrower paga la fee -> oracle Python ascolta l'evento e aggiorna il saldo
-    function requestUpdate(bytes32 btcAddressHash) external payable {
+    function requestUpdate(bytes32 btcAddressHash) external payable {                       // chiamata dall'esterno, msg.value è la fee che il borrower paga per richiedere l'aggiornamento, btcAddressHash è l'hash del BTC address di cui si vuole aggiornare il saldo
         require(msg.value >= MIN_ORACLE_FEE, "Fee too low");
-        emit UpdateRequested(btcAddressHash, msg.sender);
+        emit UpdateRequested(btcAddressHash, msg.sender);                                  
     }
 
     // Oracle Python chiama questa dopo aver letto i blk.dat
