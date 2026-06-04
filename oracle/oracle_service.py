@@ -8,101 +8,99 @@ from bitcoin.core import CBlock
 from bitcoin.core.script import CScript, OP_CHECKSIG
 from bitcoin.wallet import CBitcoinAddress, P2PKHBitcoinAddress
 
-SCRIPT_DIR = Path(__file__).resolve().parent # directory dello script oracle_service.py
-PROJECT_ROOT = SCRIPT_DIR.parent # directory principale del progetto, che contiene sia oracle/ che scripts/ e data/
+SCRIPT_DIR = Path(__file__).resolve().parent                                                 # directory dello script oracle_service.py
+PROJECT_ROOT = SCRIPT_DIR.parent                                                             # directory principale del progetto, che contiene sia oracle/ che scripts/ e data/
 
-WEB3_PROVIDER_URI = 'http://127.0.0.1:8545' # URI del nodo Ethereum locale
-CHAIN_DATA_DIR = str(PROJECT_ROOT / 'chaindata') # directory che contiene i file blk00000.dat, blk00001 con i dati dei blocchi Bitcoin
-MAX_BLOCKS = 131000 # numero massimo di blocchi da processare 
-MAX_BLK_FILES = 2 # numero massimo di file blk.dat da leggere
-POLL_INTERVAL = 2 # intervallo in secondi per controllare nuovi eventi UpdateRequested
+WEB3_PROVIDER_URI = 'http://127.0.0.1:8545'                                                 # URI del nodo Ethereum locale
+CHAIN_DATA_DIR = str(PROJECT_ROOT / 'chaindata')                                            # directory che contiene i file blk00000.dat, blk00001 con i dati dei blocchi Bitcoin
+MAX_BLOCKS = 131000                                                                         # numero massimo di blocchi da processare 
+MAX_BLK_FILES = 2                                                                           # numero massimo di file blk.dat da leggere
+POLL_INTERVAL = 2                                                                           # intervallo in secondi per controllare nuovi eventi UpdateRequested
 
-CONTRACT_INFO_FILE = str(PROJECT_ROOT / 'data' / 'oracle_contract_info.json') # config file che contiene l'indirizzo e l'ABI del contratto Oracle, scritto da scripts/InitialSetup.py e letto da questo servizio per interagire con il contratto
+CONTRACT_INFO_FILE = str(PROJECT_ROOT / 'data' / 'oracle_contract_info.json')               # config file che contiene l'indirizzo e l'ABI del contratto Oracle, scritto da scripts/InitialSetup.py e letto da questo servizio per interagire con il contratto
 
-MAINNET_MAGIC = b'\xf9\xbe\xb4\xd9' # magic number che identifica l'inizio di un blocco Bitcoin nei file blk.dat, usato per sincronizzare la lettura dei blocchi
+MAINNET_MAGIC = b'\xf9\xbe\xb4\xd9'                                                         # magic number che identifica l'inizio di un blocco Bitcoin nei file blk.dat, usato per sincronizzare la lettura dei blocchi
 
 
 # Funzione di utilità per estrarre l'indirizzo Bitcoin da uno scriptPubKey, restituendo None se non è possibile estrarre un indirizzo valido. Usa la libreria bitcoinlib per interpretare lo scriptPubKey, che sarà in formato base58. Mappa dove vanno i soldi ad un indirizzo da usare come chiave nel dict
 def extract_address(script_pubkey):
     script = CScript(script_pubkey)
-    # 1) P2PK (<pubkey> OP_CHECKSIG): lo script contiene la pubkey grezza, NON l'hash dell'indirizzo.
-    #    Va intercettato PRIMA di from_scriptPubKey: in python-bitcoinlib 0.12 quel metodo per il P2PK
-    #    restituisce un indirizzo SBAGLIATO. Deriviamo invece l'indirizzo P2PKH dalla pubkey (HASH160),
-    #    cioè la stessa stringa che il requester hasha con keccak. Senza questo i coinbase dei primi
-    #    blocchi (tutti P2PK) venivano persi -> saldi a 0. P2PK = esattamente [pubkey, OP_CHECKSIG] (2 elementi),
-    #    distinto dal P2PKH che ne ha 5, quindi il check su len(ops)==2 non confonde i due tipi.
+                                                                                            # 1) P2PK (<pubkey> OP_CHECKSIG): lo script contiene la pubkey grezza, NON l'hash dell'indirizzo.
+                                                                                            #    Va intercettato PRIMA di from_scriptPubKey: in python-bitcoinlib 0.12 quel metodo per il P2PK
+                                                                                            #    restituisce un indirizzo SBAGLIATO. Deriviamo invece l'indirizzo P2PKH dalla pubkey (HASH160),
+                                                                                            #    cioè la stessa stringa che il requester hasha con keccak. Senza questo i coinbase dei primi
+                                                                                            #    blocchi (tutti P2PK) venivano persi -> saldi a 0. P2PK = esattamente [pubkey, OP_CHECKSIG] (2 elementi),
+                                                                                            #    distinto dal P2PKH che ne ha 5, quindi il check su len(ops)==2 non confonde i due tipi.
     try:
-        ops = list(script)
-        if (len(ops) == 2 and ops[1] == OP_CHECKSIG
+        ops = list(script)                                                                  # lista delle operazioni nello script, ad esempio per P2PK sarà [pubkey, OP_CHECKSIG], per P2PKH sarà [OP_DUP, OP_HASH160, pubkey_hash, OP_EQUALVERIFY, OP_CHECKSIG], ecc.
+        if (len(ops) == 2 and ops[1] == OP_CHECKSIG                                         # se la lunghezza dello script è 2 e l'ultima operazione è OP_CHECKSIG, allora è un P2PK, e ops[0] dovrebbe essere la pubkey grezza (33 o 65 byte), da cui possiamo derivare l'indirizzo P2PKH corrispondente usando la libreria bitcoinlib
                 and isinstance(ops[0], (bytes, bytearray)) and len(ops[0]) in (33, 65)):
-            return str(P2PKHBitcoinAddress.from_pubkey(bytes(ops[0])))
+            return str(P2PKHBitcoinAddress.from_pubkey(bytes(ops[0])))                      # se è un P2PK, estraiamo la pubkey grezza da ops[0], la convertiamo in bytes (nel caso fosse un bytearray) e poi usiamo P2PKHBitcoinAddress.from_pubkey() per derivare l'indirizzo P2PKH corrispondente
     except Exception:
         pass
     # 2) tipi con indirizzo nativo nello script (P2PKH, P2SH, ...): from_scriptPubKey li interpreta direttamente
     try:
-        return str(CBitcoinAddress.from_scriptPubKey(script))
+        return str(CBitcoinAddress.from_scriptPubKey(script))                               # gestisce indirizzi standard come P2PKH, P2SH, e altri tipi riconosciuti da bitcoinlib, che contengono l'indirizzo in formato base58 direttamente nello scriptPubKey
     except Exception:
         return None
 
 # Funzione per caricare tutti i blocchi dai file blk.dat, restituendo un dizionario che mappa l'hash del blocco (in esadecimale) a una tupla contenente l'hash del blocco precedente e l'oggetto CBlock deserializzato. Legge i file blk00000.dat, blk00001.dat, ecc. fino a MAX_BLK_FILES o fino a quando non trova più file, e per ogni blocco trovato verifica il magic number per sincronizzarsi correttamente. Se riesce a deserializzare un blocco, lo aggiunge al dizionario con la chiave dell'hash del blocco in esadecimale.
 def load_all_blocks():
-    blocks = {}  # ci salva i blocchi trovati, mappando block_hash_hex -> (prevhash_hex, CBlock)
-    file_idx = 0 # indice del file blk.dat da leggere, parte da 0 e incrementa fino a MAX_BLK_FILES o fino a quando non trova più file
+    blocks = {}                                                                             # ci salva i blocchi trovati, mappando block_hash_hex -> (prevhash_hex, CBlock)
+    file_idx = 0                                                                            # indice del file blk.dat da leggere, parte da 0 e incrementa fino a MAX_BLK_FILES o fino a quando non trova più file
 
     while file_idx < MAX_BLK_FILES:
-        filename = os.path.join(CHAIN_DATA_DIR, f"blk{file_idx:05d}.dat") # costruisce il nome del file blk.dat da leggere, con il formato blk00000.dat, blk00001.dat, ecc. usando l'indice formattato con 5 cifre e zero padding
-        if not os.path.exists(filename): # se il file non esiste, esce dal ciclo perché non ci sono più blocchi da leggere
+        filename = os.path.join(CHAIN_DATA_DIR, f"blk{file_idx:05d}.dat")                   # costruisce il nome del file blk.dat da leggere, con il formato blk00000.dat, blk00001.dat, ecc. usando l'indice formattato con 5 cifre e zero padding
+        if not os.path.exists(filename):                                                    # se il file non esiste, esce dal ciclo perché non ci sono più blocchi da leggere
             break
 
         print(f"Reading {filename}...") 
-        with open(filename, 'rb') as f: # apre il file in modalità binaria per leggere i dati dei blocchi
+        with open(filename, 'rb') as f:                                                     # apre il file in modalità binaria per leggere i dati dei blocchi
             while True:
-                magic = f.read(4) # legge 4 byte per il confronto col magic number
+                magic = f.read(4)                                                           # legge i primi 4 byte per il confronto col magic number
 
-                if len(magic) < 4: # caso in cui magic è più corto di 4 byte, significa che siamo alla fine del file o che il file è corrotto, quindi usciamo dal ciclo
+                if len(magic) < 4:                                                          # caso in cui magic è più corto di 4 byte, significa che siamo alla fine del file o che il file è corrotto, quindi usciamo dal ciclo
                     break
-                if magic != MAINNET_MAGIC: # se il magic number letto non corrisponde a quello atteso per la mainnet
+                if magic != MAINNET_MAGIC:                                                  # se il magic number letto non corrisponde a quello atteso per la mainnet non siamo sincronizzati correttamente con l'inizio di un blocco
                     continue
 
                 # se magic è corretto,legge i 4 byte successivi che indicano la dimensione del blocco, e poi legge i byte del blocco in base a quella dimensione
                 size_bytes = f.read(4) 
-                if len(size_bytes) < 4: # esce perchè file finito o corrotto 
+                if len(size_bytes) < 4:                                                     # esce perchè file finito o corrotto 
                     break
 
-                size = int.from_bytes(size_bytes, 'little') # converte i 4 byte della dimensione in un intero, usando l'endianness little-endian come nei file blk.dat
-                block_data = f.read(size) # legge i byte del blocco in base alla dimensione specificata
-                if len(block_data) < size: # se non riesce a leggere tutti i byte del blocco, significa che il file è finito o corrotto, quindi usciamo dal ciclo
+                size = int.from_bytes(size_bytes, 'little')                                 # converte i 4 byte della dimensione in un intero, usando l'endianness little-endian come nei file blk.dat
+                block_data = f.read(size)                                                   # legge i byte del blocco in base alla dimensione specificata
+                if len(block_data) < size:                                                  # se non riesce a leggere tutti i byte del blocco, significa che il file è finito o corrotto, quindi usciamo dal ciclo
                     break
                 try:
-                    block = CBlock.deserialize(block_data) # prova a deserializzare i byte del blocco in un oggetto CBlock usando la libreria bitcoinlib, che rappresenta un blocco Bitcoin con tutte le sue transazioni e campi
-                    block_hash = block.GetHash().hex() # calcola l'hash del blocco usando il metodo GetHash() dell'oggetto CBlock, che restituisce l'hash in formato bytes32, e lo converte in esadecimale con .hex() per usarlo come chiave nel dizionario
-                    prevhash = block.hashPrevBlock.hex() # estrae l'hash del blocco precedente dal campo hashPrevBlock del blocco, che è in formato bytes32, e lo converte in esadecimale con .hex() per usarlo come valore nella tupla associata al blocco
-                    blocks[block_hash] = (prevhash, block) # aggiunge al dizionario blocks una voce con chiave block_hash (l'hash del blocco in esadecimale) e valore una tupla contenente prevhash (l'hash del blocco precedente in esadecimale) e block (l'oggetto CBlock deserializzato)
+                    block = CBlock.deserialize(block_data)                                  # prova a deserializzare i byte del blocco in un oggetto CBlock usando la libreria bitcoinlib, che rappresenta un blocco Bitcoin con tutte le sue transazioni e campi
+                    block_hash = block.GetHash().hex()                                      # calcola l'hash del blocco usando il metodo GetHash() dell'oggetto CBlock, che restituisce l'hash in formato bytes32, e lo converte in esadecimale con .hex() per usarlo come chiave nel dizionario
+                    prevhash = block.hashPrevBlock.hex()                                    # estrae l'hash del blocco precedente dal campo hashPrevBlock del blocco, che è in formato bytes32, e lo converte in esadecimale con .hex() per usarlo come valore nella tupla associata al blocco
+                    blocks[block_hash] = (prevhash, block)                                  # aggiunge al dizionario blocks una voce con chiave block_hash (l'hash del blocco in esadecimale) e valore una tupla contenente prevhash (l'hash del blocco precedente in esadecimale) e block (l'oggetto CBlock deserializzato)
                 except Exception:
-                    pass # se c'è un errore nella deserializzazione del blocco, lo ignoriamo e passiamo al blocco successivo, perché potrebbe essere un blocco corrotto o un file non completamente scaricato
+                    pass                                                                    # se c'è un errore nella deserializzazione del blocco, lo ignoriamo e passiamo al blocco successivo, perché potrebbe essere un blocco corrotto o un file non completamente scaricato
 
-        file_idx += 1 # passa al file blk.dat successivo incrementando l'indice
+        file_idx += 1                                                                       # passa al file blk.dat successivo incrementando l'indice
     return blocks
 
 
 # Funzione per ordinare i blocchi in base alla loro altezza, partendo dal blocco genesis (quello con prevhash di 64 zeri) e seguendo la catena dei prevhash fino a raggiungere il blocco più alto possibile. Prende in input il dizionario dei blocchi caricato da load_all_blocks(), che mappa block_hash_hex -> (prevhash_hex, CBlock), e costruisce un nuovo elenco ordinato di blocchi seguendo la catena dei prevhash. Se non trova il blocco genesis o se la catena si interrompe prima di raggiungere MAX_BLOCKS, restituisce l'elenco ordinato dei blocchi trovati.
 def sort_blocks_by_height(blocks):
-    prev_to_hash = {
-        prevhash: bh for bh, (prevhash, _) in blocks.items() # costruisce un dizionario che mappa prevhash_hex -> block_hash_hex
-    }
+    prev_to_hash = {prevhash: bh for bh, (prevhash, _) in blocks.items()}                   # costruisce un dizionario che mappa prevhash_hex -> block_hash_hex, invertendo la relazione del dizionario blocks, in modo da poter seguire la catena dei blocchi partendo dal prevhash del blocco genesis (64 zeri) e trovando l'hash del blocco successivo che ha quel prevhash, e così via fino a raggiungere il blocco più alto possibile o fino a MAX_BLOCKS
 
-    GENESIS_PREVHASH = '0' * 64 # l'hash del blocco genesis è rappresentato da 64 zeri in esadecimale, perché non ha un blocco precedente
-    if GENESIS_PREVHASH not in prev_to_hash: # se non troviamo il blocco genesis (quello con prevhash di 64 zeri) nei blocchi caricati, significa che non abbiamo trovato alcun blocco valido o che i file blk.dat sono corrotti, quindi solleviamo un'eccezione
+    GENESIS_PREVHASH = '0' * 64                                                             # l'hash del blocco genesis è rappresentato da 64 zeri in esadecimale, perché non ha un blocco precedente
+    if GENESIS_PREVHASH not in prev_to_hash:                                                # se non troviamo il blocco genesis nei blocchi caricati, significa che non abbiamo trovato alcun blocco valido o che i file blk.dat sono corrotti, quindi solleviamo un'eccezione
         raise ValueError("Could not find Genesis block in blk.dat files")
 
-    ordered = [] # elenco che conterrà i blocchi ordinati in base alla loro altezza, partendo dal blocco genesis e seguendo la catena dei prevhash
-    current_prev = GENESIS_PREVHASH # iniziamo dal blocco genesis e poi seguiremo la catena dei prevhash per trovare i blocchi successivi in ordine di altezza
+    ordered = []                                                                            # elenco che conterrà i blocchi ordinati in base alla loro altezza, partendo dal blocco genesis e seguendo la catena dei prevhash
+    current_prev = GENESIS_PREVHASH                                                         # iniziamo dal blocco genesis e poi seguiremo la catena dei prevhash per trovare i blocchi successivi in ordine di altezza
 
-    while current_prev in prev_to_hash and len(ordered) < MAX_BLOCKS: # finché troviamo un blocco con prevhash corrispondente a current_prev e non abbiamo superato il numero massimo di blocchi da ordinare, continuiamo a costruire l'elenco ordinato dei blocchi
-        current_hash = prev_to_hash[current_prev] # otteniamo l'hash del blocco corrente che ha prevhash uguale a current_prev, usando il dizionario prev_to_hash che mappa prevhash_hex -> block_hash_hex
-        _, block = blocks[current_hash] # otteniamo l'oggetto CBlock del blocco corrente usando il dizionario blocks che mappa block_hash_hex -> (prevhash_hex, CBlock)
-        ordered.append(block) # aggiungiamo il blocco corrente all'elenco ordinato dei blocchi
-        current_prev = current_hash # aggiorniamo current_prev all'hash del blocco corrente, in modo che nella prossima iterazione cercheremo il blocco successivo che ha prevhash uguale a questo hash
+    while current_prev in prev_to_hash and len(ordered) < MAX_BLOCKS:                       # finché troviamo un blocco con prevhash corrispondente a current_prev e non abbiamo superato il numero massimo di blocchi da ordinare, continuiamo a costruire l'elenco ordinato dei blocchi
+        current_hash = prev_to_hash[current_prev]                                           # otteniamo l'hash del blocco corrente che ha prevhash uguale a current_prev, usando il dizionario prev_to_hash che mappa prevhash_hex -> block_hash_hex
+        _, block = blocks[current_hash]                                                     # otteniamo l'oggetto CBlock del blocco corrente usando il dizionario blocks che mappa block_hash_hex -> (prevhash_hex, CBlock)
+        ordered.append(block)                                                               # aggiungiamo il blocco corrente all'elenco ordinato dei blocchi
+        current_prev = current_hash                                                         # aggiorniamo current_prev all'hash del blocco corrente, in modo che nella prossima iterazione cercheremo il blocco successivo che ha prevhash uguale a questo hash
 
     print(f"Ordering completed.")
     return ordered # restituisce l'elenco ordinato dei blocchi, partendo dal blocco genesis e seguendo la catena dei prevhash fino a raggiungere il blocco più alto possibile o fino a MAX_BLOCKS
@@ -134,7 +132,7 @@ def process_block(block, utxos, balances):
 # si occupa di fare il parsing del blocco
 def parse_blocks(): 
     print("Parsing blocks...")
-    all_blocks = load_all_blocks() 
+    all_blocks = load_all_blocks()                                                          # con la funzione load_all_blocks() carichiamo tutti i blocchi dai file blk.dat, restituendo un dizionario che mappa l'hash del blocco (in esadecimale) a una tupla contenente l'hash del blocco precedente e l'oggetto CBlock deserializzato
 
     # ordinamento blocchi
     ordered_blocks = sort_blocks_by_height(all_blocks)
