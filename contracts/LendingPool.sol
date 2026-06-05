@@ -1,41 +1,41 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";                 // permette di avere la funzione initialize() al posto del constructor() nei contratti upgradabili, con protezione che può essere chiamata solo una volta
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";               // implementazione stardard uups, fornisce logica upgrade e delega
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";                 // implementazione stardard ownable, fornisce logica di ownership e modifier onlyOwner
 
-import "./LoanContract.sol";
+import "./LoanContract.sol";                                                                // import del contratto del prestito, necessario per deployare nuovi prestiti e interagire con essi
 
-interface IBitcoinOracle {
-    function getEthEquivalent(bytes32 btcAddressHash) external view returns (uint256);
-    function requestUpdate(bytes32 btcAddressHash) external payable;
-    function MIN_ORACLE_FEE() external view returns (uint256);                                          // getter
+interface IBitcoinOracle {                                                                  // interfaccia che fa interagire con l'oracolo, permette di chiamare il contratto senza doverlo importare tutto
+    function getEthEquivalent(bytes32 btcAddressHash) external view returns (uint256);      // restituisce l'equivalente in eth
+    function requestUpdate(bytes32 btcAddressHash) external payable;                        // richiede un aggiornamento dell'equivalente in eth, con pagamento della fee
+    function MIN_ORACLE_FEE() external view returns (uint256);                              // getter della fee hardcodata
 }
 
-contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
+contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {                // lendingpool è inizializzabile una sola volta, è upgradabile e può essere gestito da un owner (inizialmente il deployer, ma può essere trasferita la proprietà)
     // guardia manuale per la reentrancy
-    uint256 private _reentrancyStatus;                                                        // 1 = free, 2 = entered
+    uint256 private _reentrancyStatus;                                                      // 1 = free, 2 = entered
     
-    uint256 public constant MIN_DEPOSIT = 100_000; // wei
+    uint256 public constant MIN_DEPOSIT = 100_000;                                          // wei, il minimo che si può mettere nella lendingpool
     uint256 public constant INITIAL_COLLATERAL_PCT = 50;
     uint256 public constant PROPOSAL_VOTING_PERIOD = 12;
     uint256 public constant COLLATERAL_STEP = 5;
 
-    IBitcoinOracle public oracle;
+    IBitcoinOracle public oracle;                                                           // riferimento all'oracolo
 
-    uint256 public totalFundingPool;
-    uint256 public totalLocked; 
-    uint256 public compensationPool; 
-    uint256 public collateralPercentage;
+    uint256 public totalFundingPool;                                                        // totale dei fondi depositati (inclusi i locked)
+    uint256 public totalLocked;                                                             // totale dei lockati
+    uint256 public compensationPool;                                                        // amount cmp pool
+    uint256 public collateralPercentage;                                                    // colalterale al momento
 
-    mapping(address => uint256) public deposits;                                    // ether depositati (inclusi i locked)
-    mapping(address => uint256) public lockedValue;                                 // solo ether locked
-    mapping(address => bool) public isActiveLoan;                                   // loan attivi
+    mapping(address => uint256) public deposits;                                            // indirizzo eoa -> ether depositati (inclusi i locked)
+    mapping(address => uint256) public lockedValue;                                         // indirizzo eoa -> ether locked
+    mapping(address => bool) public isActiveLoan;                                           // indirizzo loanContract -> attivo/non attivo
 
    
 
-    enum ProposalStatus {
+    enum ProposalStatus {                                                                  // indica lo stato della proposta di prestito
         Active,
         Approved,
         Rejected
@@ -50,23 +50,23 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         uint256 submittedBlock;
         ProposalStatus status;
         address[] approveVoters;                                                // array di indirizzi che hanno votato true, è iterabile
-        mapping(address => bool) hasVoted;
+        mapping(address => bool) hasVoted;                                      // struttura dati che indica se un indirizzo ha già votato, non iterabile
         mapping(address => bool) voteApprove;                                   // struttura dati che indica cosa è stato votato per ciascun indirizzo, non iterabile
     }
 
     uint256 public proposalCount;                                               // id proposte
-    mapping(uint256 => Proposal) internal _proposals;                           // internal -> no getter automatico, fornito da noi
+    mapping(uint256 => Proposal) internal _proposals;                           // internal -> no getter automatico, fornito da noi, soliditiy non sa gestire automaticamente getter di un mapping a struct
 
-    // lista ordinata dei contributor
-    address[] private _contributorList;
-    // flag anti-duplicati in _contributorList
-    mapping(address => bool) private _contributorTracked;
+    
+    address[] private _contributorList;                                         // lista ordinata dei contributor append-only
+    
+    mapping(address => bool) private _contributorTracked;                       // flag anti-duplicati in _contributorList, indiica solo true se è già presente
 
 
-    event Deposited(address indexed contributor, uint256 amount);
-    event Withdrawn(address indexed contributor, uint256 amount);
-    event LoanRegistered(address indexed loanContract);
-    event LoanDeregistered(address indexed loanContract);
+    event Deposited(address indexed contributor, uint256 amount);               // evento indicante un deposito, con indirizzo del contributor e ammontare, indexed per permettere filtri efficienti nei log
+    event Withdrawn(address indexed contributor, uint256 amount);               // evento indicante un prelievo, con indirizzo del contributor e ammontare
+    event LoanRegistered(address indexed loanContract);                         // indica registrazione di un prestito
+    event LoanDeregistered(address indexed loanContract);                       // indica chiusura di un prestito
     event CollateralPercentageChanged(uint256 newValue);
     event ProposalSubmitted(uint256 indexed proposalId, address indexed applicant, uint256 amount);
     event ProposalVoted(uint256 indexed proposalId, address indexed voter, bool approve);
@@ -74,17 +74,17 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     event ProposalRejected(uint256 indexed proposalId);
 
 
-    // blocca `initialize()` sull'implementation, lasciandola chiamabile solo via proxy.
+    // blocca `initialize()` sull'implementation diretta, lasciandola chiamabile solo via proxy.
     /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() {
+    constructor() {                                         
         _disableInitializers();
     }
 
     // come constructor ma nei contratti upgradable
-    function initialize(address oracleAddr) external initializer {
-        __Ownable_init(msg.sender);
-        _reentrancyStatus = 1;
-        oracle = IBitcoinOracle(oracleAddr);
+    function initialize(address oracleAddr) external initializer {              // modifier initializer garantisce che questa funzione possa essere chiamata solo una volta, proteggendo contro inizializzazioni multiple che potrebbero compromettere la sicurezza del contratto e chiamata solo tramite proxy
+        __Ownable_init(msg.sender);                                             // ownable è il deployer, msg.sender è il deployer, che tramite delegate call permette di preservare msg.sender originale, non è il proxy
+        _reentrancyStatus = 1;                                                  // setta la local non reentrancy a free
+        oracle = IBitcoinOracle(oracleAddr);                                    // setta l'indirizzo dell'oracolo, che deve essere già deployato, cast indirizzo a tipo interfaccia
         collateralPercentage = INITIAL_COLLATERAL_PCT;
     }
 
@@ -96,7 +96,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         _reentrancyStatus = 1;
     }
 
-    modifier onlyActiveLoan() {
+    modifier onlyActiveLoan() {                                                // garantisce che la funzione può essere chiamata solo da un LoanContract attivo, usato per funzioni che devono essere chiamate solo dai prestiti per interagire con il pool 
         require(isActiveLoan[msg.sender], "Not a registered loan");
         _;
     }
@@ -109,7 +109,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     }
 
     // fondi totali disponibili
-    function totalDisposable() public view returns (uint256) {
+    function totalDisposable() public view returns (uint256) {         
         return totalFundingPool - totalLocked;
     }
 
@@ -120,7 +120,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     // funzione di deposito
     function deposit() external payable { 
         require(msg.value >= MIN_DEPOSIT, "Below min deposit");
-        if (!_contributorTracked[msg.sender]) {
+        if (!_contributorTracked[msg.sender]) {                                // controlla se è un doppione se non lo è aggiunge alla lista e alla mappa come true
             _contributorTracked[msg.sender] = true;
             _contributorList.push(msg.sender);
         }
@@ -130,7 +130,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     }
 
     // funzione di prelievo
-    function withdraw(uint256 amount) external nonReentrant {
+    function withdraw(uint256 amount) external nonReentrant {                  // protezione contro reentrancy, visto che c'è una chiamata esterna dopo la modifica dello stato
         require(amount > 0, "Zero amount");
         require(disposableValue(msg.sender) >= amount, "Insufficient disposable");
 
@@ -153,29 +153,29 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         require(interestRate >= 1 && interestRate <= 100, "Rate out of range");
         require(duration > 0, "Zero duration");
 
-        proposalId = proposalCount++;                                                       //id incrementale
-        Proposal storage p = _proposals[proposalId];                                        // puntatore a p 
+        proposalId = proposalCount++;                                          // id incrementale
+        Proposal storage p = _proposals[proposalId];                           // puntatore a p 
         p.applicant = msg.sender;
         p.amount = amount;
         p.interestRate = interestRate;
         p.duration = duration;
         p.btcAddressHash = btcAddressHash;
-        p.submittedBlock = block.number;                                                    // block.number variabile globale
+        p.submittedBlock = block.number;                                       // block.number variabile globale
 
         emit ProposalSubmitted(proposalId, msg.sender, amount);
     }
 
-    function vote(uint256 proposalId, bool approve) external {
+    function vote(uint256 proposalId, bool approve) external {                 // funzione per votare una proposta
         Proposal storage p = _proposals[proposalId];
-        require(p.applicant != address(0), "Proposal does not exist");                      // address(0) indica indirizzo non inizializzato
+        require(p.applicant != address(0), "Proposal does not exist");         // address(0) indica indirizzo non inizializzato
         require(p.status == ProposalStatus.Active, "Proposal not active");
-        require(isContributor(msg.sender), "Not a contributor");
+        require(isContributor(msg.sender), "Not a contributor");    
         require(!p.hasVoted[msg.sender], "Already voted");
 
-        p.hasVoted[msg.sender] = true;                                                      // indichiamo che ha votato
-        p.voteApprove[msg.sender] = approve;
-        if (approve) {                                                                      // array salva solo contriburs che hanno votato si
-            p.approveVoters.push(msg.sender);
+        p.hasVoted[msg.sender] = true;                                         // indichiamo che ha votato
+        p.voteApprove[msg.sender] = approve;                                
+        if (approve) {                                                         // array salva solo contriburs che hanno votato si
+            p.approveVoters.push(msg.sender);                                 
         }
 
         emit ProposalVoted(proposalId, msg.sender, approve);
@@ -187,20 +187,22 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         return (p.applicant, p.amount, p.interestRate, p.duration, p.btcAddressHash, p.submittedBlock, p.approveVoters.length, p.status);
     }
 
-    function hasVotedOn(uint256 proposalId, address voter) external view returns (bool) {                                                   // usata in yesman per verificare se ha già votato
+    // usata in yesman per verificare se ha già votato
+    function hasVotedOn(uint256 proposalId, address voter) external view returns (bool) {        
         return _proposals[proposalId].hasVoted[voter];
     }
 
-    function getVoteApprove(uint256 proposalId, address voter) external view returns (bool) {                                               // usata nei test per verificare che il voto è stato registrato correttamente
-        return _proposals[proposalId].voteApprove[voter];
+    // usata nei test per verificare che il voto è stato registrato correttamente
+    function getVoteApprove(uint256 proposalId, address voter) external view returns (bool) {         
+        return _proposals[proposalId].voteApprove[voter];                      
     }
 
     function resolveProposal(uint256 proposalId) external nonReentrant { 
-        Proposal storage p = _proposals[proposalId]; 
+        Proposal storage p = _proposals[proposalId];                           // puntatore a p
         require(p.applicant != address(0), "Proposal does not exist");
         require(p.applicant == msg.sender, "Not applicant");
         require(p.status == ProposalStatus.Active, "Proposal not active");
-        require(block.number > p.submittedBlock + PROPOSAL_VOTING_PERIOD,"Voting period not over");                                         // si può risolvere solo dopo 12 blocchi
+        require(block.number > p.submittedBlock + PROPOSAL_VOTING_PERIOD,"Voting period not over");  
 
         uint256 totalDisp = totalDisposable();                                                                                              // fondi totali - fondi bloccati
         
