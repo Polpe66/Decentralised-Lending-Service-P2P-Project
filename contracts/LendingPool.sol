@@ -204,7 +204,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
         require(p.status == ProposalStatus.Active, "Proposal not active");
         require(block.number > p.submittedBlock + PROPOSAL_VOTING_PERIOD,"Voting period not over");  
 
-        uint256 totalDisp = totalDisposable();                                                                                              // fondi totali - fondi bloccati
+        uint256 totalDisp = totalDisposable();                                 // fondi totali - fondi bloccati
         
         // rifiuto per insufficienza di fondi
         if (totalDisp < p.amount) {
@@ -223,28 +223,28 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
 
         uint256 weightedYes = 0;
         for (uint256 i = 0; i < p.approveVoters.length; i++) {
-            weightedYes += disposableValue(p.approveVoters[i]);                             //somma fondi disponibili di chi ha votato sì
+            weightedYes += disposableValue(p.approveVoters[i]);                //somma fondi disponibili di chi ha votato sì
         }
-        if (weightedYes * 2 <= totalDisp) {                                                 // somma fondi deve essere maggiore della metà dei fondi disponibili totali (51%)
+        if (weightedYes * 2 <= totalDisp) {                                    // somma fondi deve essere maggiore della metà dei fondi disponibili totali (51%)
             p.status = ProposalStatus.Rejected;
             emit ProposalRejected(proposalId);
             return;
         }
-        p.status = ProposalStatus.Approved;                                                 // se supera tutte le condizioni, la proposta è approvata
+        p.status = ProposalStatus.Approved;                                    // se supera tutte le condizioni, la proposta è approvata
 
-        uint256 n = _contributorList.length;                                                // numero di contributors 
+        uint256 n = _contributorList.length;                                   // numero di contributors nel caso ottimale ma può essere <=
 
-        address[] memory addrs = new address[](n);                                          // array dinamico di dimensione massima n (tutti i contributors), compattato da count per passarlo al LoanContract
-        uint256[] memory shares = new uint256[](n);                                         // array dinamico di dimensione massima n (tutti i contributors), compattato da count per passarlo al LoanContract
-        uint256 count = 0;                                                                  // contatore di quanti contributors effettivamente partecipano al prestito (share > 0)
-        uint256 loanedAmount = 0;                                                           // somma di tutti gli share, dovrebbe essere uguale a p.amount o leggermente inferiore per effetto dell'arrotondamento 
+        address[] memory addrs = new address[](n);                             // array dinamico di dimensione massima n (tutti i contributors), compattato da count per passarlo al LoanContract
+        uint256[] memory shares = new uint256[](n);                            // array dinamico di dimensione massima n (tutti i contributors), compattato da count per passarlo al LoanContract
+        uint256 count = 0;                                                     // contatore di quanti contributors effettivamente partecipano al prestito (share > 0)
+        uint256 loanedAmount = 0;                                              // somma di tutti gli share, dovrebbe essere uguale a p.amount o leggermente inferiore per effetto dell'arrotondamento 
 
         for (uint256 i = 0; i < n; i++) { 
             address c = _contributorList[i];
             uint256 disp = disposableValue(c);
-            if (disp == 0) continue;                                                        // contributor senza fondi disponibili, skip per risparmiare gas
+            if (disp == 0) continue;                                           // contributor senza fondi disponibili, skip per risparmiare gas
             uint256 share = (p.amount * disp) / totalDisp;
-            if (share == 0) continue;                                                       // share zero dopo arrotondamento, skip per risparmiare gas
+            if (share == 0) continue;                                          // share zero dopo arrotondamento, skip per risparmiare gas
             addrs[count] = c;
             shares[count] = share;
             loanedAmount += share;
@@ -263,7 +263,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
         // trimming degli array a misura di count per passaggio al LoanContract
         address[] memory finalAddrs = new address[](count);
         uint256[] memory finalShares = new uint256[](count);
-        for (uint256 i = 0; i < count; i++) {                                                   // copia dei primi count elementi da addrs/shares a finalAddrs/finalShares per risparmiare gas al passaggio al LoanContract
+        for (uint256 i = 0; i < count; i++) {                                  // copia dei primi count elementi da addrs/shares a finalAddrs/finalShares per risparmiare gas al passaggio al LoanContract
             finalAddrs[i] = addrs[i];
             finalShares[i] = shares[i];
         }
@@ -275,23 +275,8 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
     }
 
     // helper estratto per evitare "stack too deep" in resolveProposal
-    function _deployLoan(
-        address applicant_,
-        uint256 loanedAmount_,
-        uint8 interestRate_,
-        uint256 duration_,
-        address[] memory finalAddrs,
-        uint256[] memory finalShares
-    ) private returns (address) {
-        return address(new LoanContract{value: loanedAmount_}(
-            applicant_,
-            loanedAmount_,
-            collateralPercentage,
-            interestRate_,
-            block.number + duration_,
-            finalAddrs,
-            finalShares
-        ));
+    function _deployLoan(address applicant_, uint256 loanedAmount_, uint8 interestRate_, uint256 duration_,  address[] memory finalAddrs, uint256[] memory finalShares ) private returns (address) {
+        return address(new LoanContract{value: loanedAmount_}(applicant_, loanedAmount_, collateralPercentage, interestRate_, block.number + duration_, finalAddrs, finalShares));
     }
 
    // insertion sort O(n^2), non il migliore ma efficiente e più semplice per n piccoli
@@ -313,12 +298,12 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
     // funzione chiamata dal LoanContract
     function repayLockedValue(address contributor, uint256 amount) external payable onlyActiveLoan {
         require(msg.value == amount, "Value mismatch");
-        require(lockedValue[contributor] >= amount, "Underflow locked");
+        require(lockedValue[contributor] >= amount, "Underflow locked");       // gestisce valori amount  minori o uguali a lockedValue, non può essere usato per "sbloccare" più di quanto è stato bloccato, protezione contro errori o attacchi che potrebbero causare underflow
         lockedValue[contributor] -= amount;
         totalLocked -= amount;
     }
 
-    // interesse trasferito dal LoanContract al contributor
+    // interesse trasferito dal LoanContract al contributor, non c'è reentracy poichè non c'è stato
     function creditInterest(address contributor) external payable onlyActiveLoan {
         (bool ok, ) = contributor.call{value: msg.value}("");
         require(ok, "Interest transfer failed");
@@ -343,7 +328,6 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
         totalLocked -= amount;
         // deposits[contributor] invariato: contributor riacquista disposable.
         // totalFundingPool invariato: ETH resta nel pool.
-        // No external call: nonReentrant rimosso (niente vettore reentrancy).
     }
 
 
@@ -364,9 +348,10 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
         emit LoanDeregistered(msg.sender);
     }
 
-    // UUPS
+    // UUPS, ti obbliga a implementare questa funzione che autorizza l'upgrade, noi vogliamo che solo l'owner possa autorizzare l'upgrade, quindi usiamo il modifier onlyOwner
     function _authorizeUpgrade(address) internal override onlyOwner {}
 
-    // evita griefing da parte di attaccanti
+    // accetta ETH inviato senza dati (plain transfer). Flussi interni usano funzioni payable, quindi qui entra solo ETH esterno: non viene contabilizzato e resta nel
+   // contratto. a quanto paare inutile
     receive() external payable {}
 }
