@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
+
+// questo contratto è un mock dell'oracolo che fornisce informazioni sulla blockchain di Bitcoin, 
+// utilizzato per testare il funzionamento del contratto LendingPool senza dover interagire con un vero oracolo o con la blockchain di Bitcoin. 
+// Permette di impostare manualmente i valori in ETH equivalenti a determinati hash (blocchi Bitcoin) e di simulare le richieste di aggiornamento all'oracolo, accettando una fee in ETH ma senza implementare alcuna logica reale.
 contract MockBitcoinOracle {
     uint256 public constant MIN_ORACLE_FEE = 4_566_700_000_000;                     //fee minima per richiedere un aggiornamento all'oracolo
 
