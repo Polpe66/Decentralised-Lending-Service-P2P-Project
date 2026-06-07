@@ -272,7 +272,7 @@ contract LoanContract {
             justTransitioned = true;
         }
 
-        uint256 locked = initialLockedOf[msg.sender];
+        uint256 locked = initialLockedOf[msg.sender];                                      // initial locked di address contributor chiamante
         require(locked > 0, "Not a contributor");
 
         uint256 owed = locked - unlockedSoFar[msg.sender] - alreadyCompensated[msg.sender];         // eth dovuti
