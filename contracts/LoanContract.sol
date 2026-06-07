@@ -157,18 +157,18 @@ contract LoanContract {
             for (uint256 i = 0; i < n && baseRemaining > 0; i++) {                         
                 Contributor memory c = contributors[i];                                    // c è un riferimento alla struct del contributor i-esimo, usata per accedere a indirizzo e fondi bloccati
                 uint256 capacity = c.initialLocked - unlockedSoFar[c.addr] - compRecovered[c.addr];  // capacità del contributor dato dai fondi lockati - sbloccati fino ad ora - ricuperati  dalla cmp pool
-                if (capacity == 0) continue;
-                uint256 take = baseRemaining < capacity ? baseRemaining : capacity;
-                baseRemaining -= take;
-                (uint256 toComp_, uint256 toC_) = _splitBaseForfeit(c.addr, take);
+                if (capacity == 0) continue;                                               // se al contributor non spettano più soldi skip
+                uint256 take = baseRemaining < capacity ? baseRemaining : capacity;        // se sono qua vuol dire che all'esimo spettano soldi, allora se la capacità è maggiore del base remaining prenso base remaining, altrimenti prendo tutta la capacità del contributor
+                baseRemaining -= take;                                                     // i soldi che rimangono da recuperare - take                                                   
+                (uint256 toComp_, uint256 toC_) = _splitBaseForfeit(c.addr, take);         // funzione che decide come sono destinati i fondi
                 // caso in cui pago la comp pool
-                if (toComp_ > 0) { 
+                if (toComp_ > 0) {                                                         // se toComp_ è >0 vuol dire che una parte di take va alla comp pool, quindi aggiorno baseToComp e compRecovered per quel contributor
                     baseToComp += toComp_;
-                    compRecovered[c.addr] += toComp_;
+                    compRecovered[c.addr] += toComp_;                                      // indica quanto ha recuperato la cmp pool da un contributor, usato per capire quanto deve ancora recuperare in caso di loan fallito (gap tra alreadyCompensated e compRecovered)
                 }
                 // caso in cui pago il contributor
                 if (toC_ > 0) {
-                    unlockedSoFar[c.addr] += toC_;
+                    unlockedSoFar[c.addr] += toC_;                                         // aggiorna gli sbloccati
                     lendingPool.repayLockedValue{value: toC_}(c.addr, toC_);
                 }
             }
@@ -222,26 +222,26 @@ contract LoanContract {
                 uint256 gap = alreadyCompensated[addr] - compRecovered[addr];                           // differenza tra quanto contributor ha ricevuto dalla cmp pool e quanto la cmp pool ha ricevuto dall'applicant 
                 if (gap > 0) {
                     compRecovered[addr] += gap;  
-                    lendingPool.addToCompensationPool{value: gap}();
+                    lendingPool.addToCompensationPool{value: gap}();                                    // salda la cmp pool
                 }
 
-                uint256 residue = il - unlockedSoFar[addr] - compRecovered[addr];
+                uint256 residue = il - unlockedSoFar[addr] - compRecovered[addr];                       // residuo = fondi lockati - sbloccati fibo ad ora - recuperati dalla cmp pool
                 if (residue > 0) {
-                    unlockedSoFar[addr] += residue;
-                    lendingPool.repayLockedValue{value: residue}(addr, residue);
+                    unlockedSoFar[addr] += residue;                        
+                    lendingPool.repayLockedValue{value: residue}(addr, residue);                        // se c'è un residuo, vuol dire che il contributor non ha ricevuto tutto quello che spettava, quindi lo sblocco completamente, e pago il pool per quello che manca, in modo da portare a 0 il residuo e chiudere tutti i conti con i contributor
                 }
             }
             
             //gestione ecccessi finali
-            if (toComp > 0) {                                                               // soldi mandati alla comp pool per chiudere il loan, sia per coprire l'unrecoveredAdvance residuo (gap) che per i pagamenti in eccesso a loan+interest
+            if (toComp > 0) {                                                                           // soldi mandati alla comp pool per chiudere il loan, sia per coprire l'unrecoveredAdvance residuo (gap) che per i pagamenti in eccesso a loan+interest
                 lendingPool.addToCompensationPool{value: toComp}();
             }
-            uint256 sweep = address(this).balance; 
+            uint256 sweep = address(this).balance;                                                      // saldo del wallet del loanContract, che dovrebbe essere 0 o molto vicino a 0, se è >0 vuol dire che c'è un leftover da sweepare alla comp pool, forse dovuto ad arrotondamenti o a qualche edge case
             if (sweep > 0) {
-                lendingPool.addToCompensationPool{value: sweep}();                          // sweep finale per qualsiasi ETH rimasto
+                lendingPool.addToCompensationPool{value: sweep}();                                      // sweep finale per qualsiasi ETH rimasto
             }
 
-            if (!wasFailed) {                                                               // false vuol dire che contratto si chiude in maniera ordinaria
+            if (!wasFailed) {                                                                            // false vuol dire che contratto si chiude in maniera ordinaria
                 status = Status.Successful;
                 lendingPool.decreaseCollateral();
                 lendingPool.markLoanClosed();
@@ -330,8 +330,8 @@ contract LoanContract {
 
     // funzione che effettua lo split proporzionale di una payment parziale del base amount tra comp pool e contributor
     function _splitBaseForfeit(address c, uint256 share) internal view returns (uint256 toComp, uint256 toC) {
-        uint256 unrecoveredAdvance = alreadyCompensated[c] - compRecovered[c];                                      // indica i fondi ricevuti dalla cmp pool che devono essere ripagati dall'applicant in caso di loan fallito (anticipo ancora scoperto, ovvero quanto la pool deve ancora rientrare per conto di contributor)
-        if (unrecoveredAdvance == 0) {                                                                              //se non devo dare nulla alla comp pool, tutto va al contributor
+        uint256 unrecoveredAdvance = alreadyCompensated[c] - compRecovered[c];                               // indica i fondi ricevuti dalla cmp pool che devono essere ripagati dall'applicant in caso di loan fallito (anticipo ancora scoperto, ovvero quanto la pool deve ancora rientrare per conto di contributor)
+        if (unrecoveredAdvance == 0) {                                                                       //se non devo dare nulla alla comp pool, tutto va al contributor
             return (0, share); 
         }
 
@@ -343,9 +343,9 @@ contract LoanContract {
         if (toComp > unrecoveredAdvance)                                                                    // in caso di leftover per arrodondamenti
             toComp = unrecoveredAdvance;
 
-        if (toComp > share)                                             // in caso di leftover per arrodondamenti
+        if (toComp > share)                                                                                 // in caso di leftover per arrodondamenti
             toComp = share;
 
-        toC = share - toComp;                                           // il resto va al contributor
+        toC = share - toComp;                                                                               // il resto va al contributor
     }
 }
