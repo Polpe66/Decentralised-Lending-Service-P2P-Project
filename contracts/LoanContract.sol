@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-interface ILendingPool {
+interface ILendingPool {                                                                // interfaccia che il loanContract usa per interagire con il lendingPool
     function repayLockedValue(address contributor, uint256 amount) external payable;
     function creditInterest(address contributor) external payable;
     function addToCompensationPool() external payable;
@@ -14,7 +14,7 @@ interface ILendingPool {
 
 contract LoanContract {
 
-    enum Status {
+    enum Status {                                                                       // status del contratto
         Active,
         Failed,
         Successful
@@ -25,7 +25,7 @@ contract LoanContract {
         uint256 initialLocked;                                                          // fondi bloccati al momento della creazione del loanContract
     }
 
-    address public immutable applicant;
+    address public immutable applicant;                                                
     uint256 public immutable loanedAmount;
     uint256 public immutable collateralPercentage;
     uint256 public immutable interestRate;                                              // tasso interesse pattuito in proposta (1-100)
@@ -44,13 +44,14 @@ contract LoanContract {
     mapping(address => uint256) public compRecovered;                                   // fondi che l'applicant paga dopo loan fallito che vanno alla compensation pool
 
     mapping(address => uint256) public expectedInterestOf;                              // quota lorda di interesse (gain+collateral) attesa per ciascun contributor, proporzionale a initialLocked
+    
     mapping(address => uint256) public interestPaidGrossOf;                             // quota lorda di interesse già pagata (gain+collateral) per ciascun contributor
 
-    uint256 public remainingLoanAmount;
+    uint256 public remainingLoanAmount;                                                 // capitale residuo da pagare, aggiornato ad ogni pagamento, usato per determinare quando il loan è completamente rimborsato
     uint256 public remainingInterest;                                                   // somma residua di expectedInterestOf - interestPaidGrossOf, azzerata su loan failed
     Status public status;
 
-    bool public terminated;
+    bool public terminated;                                                             // indica se il contratto è stato terminato, usato per bloccare funzioni dopo la chiusura del loanContract
 
     event LoanCreated(address indexed applicant, uint256 loanedAmount, uint256 expiryBlock, uint256 collateralPercentage, uint256 interestRate, uint256 expectedInterest);
     event Repayment(uint256 baseAmount, uint256 interestPaid, uint256 excessToComp, uint256 toCompensation, uint256 remainingBase, uint256 remainingInterest);
@@ -59,17 +60,17 @@ contract LoanContract {
     event CompensationRequested(address indexed contributor, uint256 owed, uint256 paid); 
     event LoanTerminated(address indexed loan);
 
-    modifier onlyApplicant() {
+    modifier onlyApplicant() {                                                          // solo l'applicant può chiamare certe funzioni, come partialRepay
         require(msg.sender == applicant, "Only applicant");
         _;
     }
 
-    modifier onlyLendingPool() {
+    modifier onlyLendingPool() {                                                        // solo il lendingPool può chiamare certe funzioni, come markFailed, terminate, repayLockedValue, creditInterest, addToCompensationPool, compensateFromPool, decreaseCollateral, increaseCollateral, markLoanClosed
         require(msg.sender == address(lendingPool), "Only LendingPool");
         _;
     }
 
-    modifier notTerminated() {
+    modifier notTerminated() {                                                          // blocca funzioni dopo la chiusura del loanContract
         require(!terminated, "Terminated");
         _;
     }
@@ -77,7 +78,7 @@ contract LoanContract {
     constructor(address _applicant, uint256 _loanedAmount, uint256 _collateralPercentage, uint256 _interestRate, uint256 _expiryBlock, address[] memory _contribAddrs, uint256[] memory _contribLocks) payable { // da lendingPool (p.applicant, loanedAmount, collateralPercentage, p.interestRate, block.number + p.duration, finalAddrs, finalShares)
         require(_applicant != address(0), "Zero applicant");
         require(_loanedAmount > 0, "Zero loaned");
-        require(msg.value == _loanedAmount, "Bad msg.value");
+        require(msg.value == _loanedAmount, "Bad msg.value");                           // pagato da lendingPool al momento della creazione del loanContract
         require(_contribAddrs.length == _contribLocks.length, "Length mismatch");
         require(_contribAddrs.length > 0, "No contributors");
         require( _collateralPercentage >= 1 && _collateralPercentage <= 100, "Bad collateral percentage");
@@ -89,22 +90,23 @@ contract LoanContract {
         interestRate = _interestRate;
         expectedInterest = (_loanedAmount * _interestRate) / 100;
         expiryBlock = _expiryBlock;
-        lendingPool = ILendingPool(msg.sender);                                                         // msg.sender è il lendingPool che ha creato questo loanContract, è il riferimento che useremo per interagire con il pool, è un cast
+        lendingPool = ILendingPool(msg.sender);                                         // msg.sender è il lendingPool che ha creato questo loanContract, è il riferimento che useremo per interagire con il pool, è un cast
 
         uint256 sum = 0;
         uint256 sumInterest = 0;
         for (uint256 i = 0; i < _contribAddrs.length; i++) {
             require(_contribAddrs[i] != address(0), "Zero contributor");
-            require(_contribLocks[i] > 0, "Zero lock");
-            require(initialLockedOf[_contribAddrs[i]] == 0, "Duplicate contributor");
+            require(_contribLocks[i] > 0, "Zero lock");                                 // si mette >0 perchè è un array di int e non si emtte address(0) come sopra che è un array di address
+            require(initialLockedOf[_contribAddrs[i]] == 0, "Duplicate contributor");   // se valore è !=0 vuol dire che è già stato inserito
+            // creiamo la struct del contributor inserendo indirizzo e fondi bloccati
             contributors.push(Contributor({addr: _contribAddrs[i], initialLocked: _contribLocks[i]}));
-            initialLockedOf[_contribAddrs[i]] = _contribLocks[i];
+            initialLockedOf[_contribAddrs[i]] = _contribLocks[i];                       // aggiorniamo mapping per accedere direttamente ai fondi bloccati di un contributor dato il suo indirizzo, usato per split proporzionali e logica compensazione pool
             
-            uint256 ei = (expectedInterest * _contribLocks[i]) / _loanedAmount;                         // quota di interesse atteso per contributor proporzionale al suo contributo iniziale
-            expectedInterestOf[_contribAddrs[i]] = ei;
-            sumInterest += ei;
+            uint256 ei = (expectedInterest * _contribLocks[i]) / _loanedAmount;         // quota di interesse atteso per contributor proporzionale al suo contributo iniziale (contributore, non del totale atteso)
+            expectedInterestOf[_contribAddrs[i]] = ei;                                  // salviamo nell'array per ogni indirizzo ei 
+            sumInterest += ei;                                                          // somma di tutte le quote di interesse atteso per i contributor, usata per calcolare remainingInterest <= di expectedInterest a causa di arrotondamenti nella divisione proporzionale
             
-            sum += _contribLocks[i];
+            sum += _contribLocks[i];                                                    // ulteriore controllo di sicurezza per verificare che la somma dei fondi bloccati dai contributor sia uguale all'importo del prestito, altrimenti c'è un errore nella creazione del loanContract
         }
 
         require(sum == _loanedAmount, "Sum mismatch");                                      // somma totale dei fondi bloccati dai contributor deve essere uguale all'importo del prestito, altrimenti c'è un errore nella creazione del loanContract
@@ -114,9 +116,9 @@ contract LoanContract {
         
         remainingInterest = sumInterest;                                                    // remainingInterest = somma effettiva delle quote di interesse atteso per i contributor, che può essere leggermente diversa da expectedInterest a causa di arrotondamenti nella divisione proporzionale
 
-        status = Status.Active; 
+        status = Status.Active;                                                             // dopo aver settato tutte le variabili stato active
 
-        (bool ok, ) = _applicant.call{value: _loanedAmount}("");                            // erogazione del prestito all'applicant
+        (bool ok, ) = _applicant.call{value: _loanedAmount}("");                            // erogazione del prestito all'applicant, non c'è reentrancy perché è la prima e unica call che facciamo all'applicant, dopo di questa non facciamo più call esterne all'applicant, e comunque l'applicant non ha la possibilità di influenzare il flusso del contratto
         require(ok, "Disburse failed");
 
         emit LoanCreated(_applicant, _loanedAmount, _expiryBlock, _collateralPercentage, _interestRate, expectedInterest);   // si mandano parametri e non variabili globali per risparmaire gas
@@ -124,7 +126,7 @@ contract LoanContract {
 
 
     // funzioni di utility
-    function contributorCount() external view returns (uint256) { 
+    function contributorCount() external view returns (uint256) {                           // esterna
         return contributors.length;
     }
 
@@ -135,7 +137,7 @@ contract LoanContract {
     function markFailed() external onlyLendingPool notTerminated {
         require(status == Status.Active, "Not active");
         status = Status.Failed;
-        remainingInterest = 0;                                                            // su failed l'interesse non è piu' dovuto futuri pagamenti che eccedono il loan vanno alla comp pool
+        remainingInterest = 0;                                                             // su failed l'interesse non è piu' dovuto futuri pagamenti che eccedono il loan vanno alla comp pool
         emit MarkedFailed();
     }
 
@@ -147,13 +149,14 @@ contract LoanContract {
         uint256 n = contributors.length;
 
         // capitale
-        uint256 baseAmount = msg.value > remainingLoanAmount ? remainingLoanAmount : msg.value;
-        uint256 baseRemaining = baseAmount;
+
+        uint256 baseAmount = msg.value > remainingLoanAmount ? remainingLoanAmount : msg.value;  // se il valore mandato è > del loan residuo, si prende il residuo del loan, altrimenti si prende tutto il valore mandato
+        uint256 baseRemaining = baseAmount;                                                // variabile che si aggiorna nel loop per capire quanto del baseAmount è rimasto da allocare tra comp pool e contributor, usata per split proporzionale in caso di pagamento parziale del capitale
         uint256 baseToComp = 0;
         if (baseAmount > 0) {
-            for (uint256 i = 0; i < n && baseRemaining > 0; i++) {
-                Contributor memory c = contributors[i];
-                uint256 capacity = c.initialLocked - unlockedSoFar[c.addr] - compRecovered[c.addr];
+            for (uint256 i = 0; i < n && baseRemaining > 0; i++) {                         
+                Contributor memory c = contributors[i];                                    // c è un riferimento alla struct del contributor i-esimo, usata per accedere a indirizzo e fondi bloccati
+                uint256 capacity = c.initialLocked - unlockedSoFar[c.addr] - compRecovered[c.addr];  // capacità del contributor dato dai fondi lockati - sbloccati fino ad ora - ricuperati  dalla cmp pool
                 if (capacity == 0) continue;
                 uint256 take = baseRemaining < capacity ? baseRemaining : capacity;
                 baseRemaining -= take;
