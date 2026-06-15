@@ -214,7 +214,7 @@ contract LoanContract {
         uint256 toComp = baseToComp + interestToComp + excess;                                          // tutto quello che va alla cmp pool
 
         // chiusura
-        if (remainingLoanAmount == 0 && remainingInterest == 0) {
+        if (remainingLoanAmount == 0 && remainingInterest == 0) {       //rete di sicurezza in più per evitare che un loan che è stato completamente rimborsato rimanga aperto per errori
             bool wasFailed = status == Status.Failed;                                                   // true se loan era fallito prima di questa payment, false se è un pagamento che chiude un loan ancora attivo (non fallito)
 
             for (uint256 i = 0; i < n; i++) {
