@@ -46,7 +46,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
         uint256 amount;
         uint8 interestRate;                                                     // 1-100
         uint256 duration;                                                       // durata prestito
-        bytes32 btcAddressHash;                                                 // indirizzo btc hashato per verificare liquidità
+        bytes32 btcAddressHash;                                                 // indirizzo btc hashato per verificare liquidità, usato l'hash per avere dimensione fissa e evitare dinamicità indirizzo btc
         uint256 submittedBlock;
         ProposalStatus status;
         address[] approveVoters;                                                // array di indirizzi che hanno votato true, è iterabile
@@ -58,7 +58,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
     mapping(uint256 => Proposal) internal _proposals;                           // internal -> no getter automatico, fornito da noi, soliditiy non sa gestire automaticamente getter di un mapping a struct
 
     
-    address[] private _contributorList;                                         // lista ordinata dei contributor append-only
+    address[] private _contributorList;                                         // lista ordinata dei contributor append-only, iterable
     
     mapping(address => bool) private _contributorTracked;                       // flag anti-duplicati in _contributorList, indiica solo true se è già presente
 
@@ -74,7 +74,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
     event ProposalRejected(uint256 indexed proposalId);
 
 
-    // blocca `initialize()` sull'implementation diretta, lasciandola chiamabile solo via proxy.
+    // blocca `initialize()` sull'implementation diretta, lasciandola chiamabile solo via proxy. permette di evitare che il plugin segnali errori poichè con il proxy il costruttore non dovrebbe avere logica, initialize si può chiamare solo dal proxy
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {                                         
         _disableInitializers();
@@ -82,7 +82,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
 
     // come constructor ma nei contratti upgradable
     function initialize(address oracleAddr) external initializer {              // modifier initializer garantisce che questa funzione possa essere chiamata solo una volta, proteggendo contro inizializzazioni multiple che potrebbero compromettere la sicurezza del contratto e chiamata solo tramite proxy
-        __Ownable_init(msg.sender);                                             // ownable è il deployer, msg.sender è il deployer, che tramite delegate call permette di preservare msg.sender originale, non è il proxy
+        __Ownable_init(msg.sender);                                             // ownable è il deployer, msg.sender è il deployer, che tramite delegate call permette di preservare msg.sender originale, non è il proxy, se non lo fai nessuno sarebbe owner
         _reentrancyStatus = 1;                                                  // setta la local non reentrancy a free
         oracle = IBitcoinOracle(oracleAddr);                                    // setta l'indirizzo dell'oracolo, che deve essere già deployato, cast indirizzo a tipo interfaccia
         collateralPercentage = INITIAL_COLLATERAL_PCT;
@@ -97,7 +97,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
     }
 
     modifier onlyActiveLoan() {                                                // garantisce che la funzione può essere chiamata solo da un LoanContract attivo, usato per funzioni che devono essere chiamate solo dai prestiti per interagire con il pool 
-        require(isActiveLoan[msg.sender], "Not a registered loan");
+        require(isActiveLoan[msg.sender], "Not a registered loan");            // è uno smart contract non un EOA
         _;
     }
 
