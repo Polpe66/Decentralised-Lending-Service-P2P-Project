@@ -299,7 +299,7 @@ contract LoanContract {
     }
 
 
-    function terminate() external {
+    function terminate() external {                                 //external perché chiamata dal lendingPool chiamata solo nei test
         require(!terminated, "Already terminated");
 
         if (status == Status.Successful) {
