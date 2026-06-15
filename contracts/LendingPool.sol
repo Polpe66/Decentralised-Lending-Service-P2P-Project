@@ -143,7 +143,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
 
      // interazione con oracle 
     function requestOracleUpdate(bytes32 btcAddressHash) external payable {
-        uint256 fee = oracle.MIN_ORACLE_FEE();
+        uint256 fee = oracle.MIN_ORACLE_FEE();                                   //hardcodata perché ci risparmia 20000 gas. Svantaggio -> se gas price cambia va aggiornato
         require(msg.value >= fee, "Fee too low");
         oracle.requestUpdate{value: msg.value}(btcAddressHash);
     }
@@ -154,7 +154,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
         require(duration > 0, "Zero duration");
 
         proposalId = proposalCount++;                                          // id incrementale
-        Proposal storage p = _proposals[proposalId];                           // puntatore a p 
+        Proposal storage p = _proposals[proposalId];                           // p ha puntatore al mapping della struct Proposal, quindi modificando p si modifica direttamente il mapping (storage perché modifichiamo direattamente il dato on-chain, non una copia in memoria)
         p.applicant = msg.sender;
         p.amount = amount;
         p.interestRate = interestRate;
@@ -181,7 +181,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
         emit ProposalVoted(proposalId, msg.sender, approve);
     }
 
-
+    // usato nei test e in yesman
     function getProposal(uint256 proposalId) external view returns (address applicant, uint256 amount, uint8 interestRate, uint256 duration, bytes32 btcAddressHash, uint256 submittedBlock, uint256 approveVoterCount, ProposalStatus status) {
         Proposal storage p = _proposals[proposalId];
         return (p.applicant, p.amount, p.interestRate, p.duration, p.btcAddressHash, p.submittedBlock, p.approveVoters.length, p.status);
@@ -189,7 +189,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
 
     // usata in yesman per verificare se ha già votato
     function hasVotedOn(uint256 proposalId, address voter) external view returns (bool) {        
-        return _proposals[proposalId].hasVoted[voter];
+        return _proposals[proposalId].hasVoted[voter];                      // restituisce true se indirizzo ha già votato
     }
 
     // usata nei test per verificare che il voto è stato registrato correttamente
@@ -197,7 +197,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
         return _proposals[proposalId].voteApprove[voter];                      
     }
 
-    function resolveProposal(uint256 proposalId) external nonReentrant { 
+    function resolveProposal(uint256 proposalId) external nonReentrant {            // nonReentrant perché ci sono chiamate esterne a loan contract e oracle, e modifiche di stato prima di queste chiamate, quindi protezione contro reentrancy che potrebbe causare problemi di coerenza dello stato o attacchi
         Proposal storage p = _proposals[proposalId];                           // puntatore a p
         require(p.applicant != address(0), "Proposal does not exist");
         require(p.applicant == msg.sender, "Not applicant");
@@ -214,7 +214,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
         }
 
         // rifiuto per insufficienza di liquidità BTC
-        uint256 btcEth = oracle.getEthEquivalent(p.btcAddressHash);
+        uint256 btcEth = oracle.getEthEquivalent(p.btcAddressHash);         // chiama l'oracolo 
         if (btcEth < p.amount) {
             p.status = ProposalStatus.Rejected;
             emit ProposalRejected(proposalId);
@@ -261,7 +261,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
         totalLocked += loanedAmount;
 
         // trimming degli array a misura di count per passaggio al LoanContract
-        address[] memory finalAddrs = new address[](count);
+        address[] memory finalAddrs = new address[](count);                 // memory perché non deve essere persistente nella blockchain come è con storage
         uint256[] memory finalShares = new uint256[](count);
         for (uint256 i = 0; i < count; i++) {                                  // copia dei primi count elementi da addrs/shares a finalAddrs/finalShares per risparmiare gas al passaggio al LoanContract
             finalAddrs[i] = addrs[i];
@@ -274,12 +274,15 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
         emit ProposalApproved(proposalId, loanAddr, loanedAmount);
     }
 
-    // helper estratto per evitare "stack too deep" in resolveProposal
+    // helper estratto per evitare "stack too deep" in resolveProposal 
+    // lo stack dell'evm ha massimo 16 livelli, ogni variabile locale, parametro, occupa un livello, quindi se ci sono troppe variabili locali o parametri, si può superare il limite e causare un errore di compilazione "stack too deep"
+    //in _deployLoan() essendo privato crea nuovo stackframe e quindi risolve il limite dell'evm
     function _deployLoan(address applicant_, uint256 loanedAmount_, uint8 interestRate_, uint256 duration_,  address[] memory finalAddrs, uint256[] memory finalShares ) private returns (address) {
         return address(new LoanContract{value: loanedAmount_}(applicant_, loanedAmount_, collateralPercentage, interestRate_, block.number + duration_, finalAddrs, finalShares));
     }
 
-   // insertion sort O(n^2), non il migliore ma efficiente e più semplice per n piccoli
+   // insertion sort O(n^2) con n grande, non il migliore ma efficiente e più semplice per n piccoli e non richiede memoria aggiuntiva
+   // soluzione scalbile per n grandi -> quicksort o mergesort, ma richiedono più memoria e sono più complessi da implementare in solidity
     function _sortContributors(address[] memory addrs, uint256[] memory shares, uint256 count) internal pure {
         for (uint256 i = 1; i < count; i++) {
             address a = addrs[i];
@@ -295,7 +298,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
         }
     }
     
-    // funzione chiamata dal LoanContract
+    // funzione chiamata dal LoanContract per sbloccare i fondi bloccati (lockedValue) di un contributor, riducendo anche il totale dei fondi bloccati (totalLocked)
     function repayLockedValue(address contributor, uint256 amount) external payable onlyActiveLoan {
         require(msg.value == amount, "Value mismatch");
         require(lockedValue[contributor] >= amount, "Underflow locked");       // gestisce valori amount  minori o uguali a lockedValue, non può essere usato per "sbloccare" più di quanto è stato bloccato, protezione contro errori o attacchi che potrebbero causare underflow
@@ -310,7 +313,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
     }
 
     function addToCompensationPool() external payable onlyActiveLoan {
-        compensationPool += msg.value;
+        compensationPool += msg.value;              //msg.value è l'importo di ether inviato con la transazione aggiunto alla compPool
     }
 
 
