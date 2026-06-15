@@ -103,12 +103,12 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
 
 
 
-    //  ether dispinibili di un contributor specifico
-    function disposableValue(address contributor) public view returns (uint256) {
+    //  ether disponibili di un contributor specifico
+    function disposableValue(address contributor) public view returns (uint256) { // view legge lo stato ma non lo modifica
         return deposits[contributor] - lockedValue[contributor];
     }
 
-    // fondi totali disponibili
+    // fondi totali disponibili della lending pool
     function totalDisposable() public view returns (uint256) {         
         return totalFundingPool - totalLocked;
     }
@@ -121,8 +121,8 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
     function deposit() external payable { 
         require(msg.value >= MIN_DEPOSIT, "Below min deposit");
         if (!_contributorTracked[msg.sender]) {                                // controlla se è un doppione se non lo è aggiunge alla lista e alla mappa come true
-            _contributorTracked[msg.sender] = true;
-            _contributorList.push(msg.sender);
+            _contributorTracked[msg.sender] = true;                            // aggiunge nuove contributor
+            _contributorList.push(msg.sender); 
         }
         deposits[msg.sender] += msg.value;
         totalFundingPool += msg.value;
