@@ -25,7 +25,7 @@ contract LoanContract {
         uint256 initialLocked;                                                          // fondi bloccati al momento della creazione del loanContract
     }
 
-    address public immutable applicant;                                                
+    address public immutable applicant;                                                 // immutable è settata a runtime                                
     uint256 public immutable loanedAmount;
     uint256 public immutable collateralPercentage;
     uint256 public immutable interestRate;                                              // tasso interesse pattuito in proposta (1-100)
@@ -109,6 +109,7 @@ contract LoanContract {
             sum += _contribLocks[i];                                                    // ulteriore controllo di sicurezza per verificare che la somma dei fondi bloccati dai contributor sia uguale all'importo del prestito, altrimenti c'è un errore nella creazione del loanContract
         }
 
+        //guardia in più non serve a nulla (evidenzia bugg e basta)
         require(sum == _loanedAmount, "Sum mismatch");                                      // somma totale dei fondi bloccati dai contributor deve essere uguale all'importo del prestito, altrimenti c'è un errore nella creazione del loanContract
         totalInitialLocked = sum;                                                           // la somma di tutti i fondi bloccati dai contributor
 
@@ -146,7 +147,7 @@ contract LoanContract {
         require(status == Status.Active || status == Status.Failed, "Loan closed");
         require(msg.value > 0, "Zero value");
 
-        uint256 n = contributors.length;
+        uint256 n = contributors.length;        // non si usa funzione esterna di utility per risparmiare gas, si salva in variabile locale n, usata nel loop per iterare sui contributor
 
         // capitale
 
@@ -155,7 +156,7 @@ contract LoanContract {
         uint256 baseToComp = 0;
         if (baseAmount > 0) {
             for (uint256 i = 0; i < n && baseRemaining > 0; i++) {                         
-                Contributor memory c = contributors[i];                                    // c è un riferimento alla struct del contributor i-esimo, usata per accedere a indirizzo e fondi bloccati
+                Contributor memory c = contributors[i];                                    // c è un riferimento alla struct del contributor i-esimo, usata per accedere a indirizzo e fondi bloccati (memory usato per leggere, storage per scrivere)
                 uint256 capacity = c.initialLocked - unlockedSoFar[c.addr] - compRecovered[c.addr];  // capacità del contributor dato dai fondi lockati - sbloccati fino ad ora - ricuperati  dalla cmp pool
                 if (capacity == 0) continue;                                               // se al contributor non spettano più soldi skip
                 uint256 take = baseRemaining < capacity ? baseRemaining : capacity;        // se sono qua vuol dire che all'esimo spettano soldi, allora se la capacità è maggiore del base remaining prenso base remaining, altrimenti prendo tutta la capacità del contributor
@@ -181,7 +182,7 @@ contract LoanContract {
         uint256 interestToComp = 0;                                                                         // causa collateraPercentage
         uint256 interestDistributed = 0;
 
-        if (interestAmount > 0) {
+        if (interestAmount > 0) {                                                       //ci si entra solo se non è stata richiesta recovery dalla compPool e se afterbase è maggiore di zero
             uint256 interestRemaining = interestAmount;
             for (uint256 i = 0; i < n && interestRemaining > 0; i++) {
                 address ca = contributors[i].addr;                                                          // ca contributor address
@@ -203,6 +204,7 @@ contract LoanContract {
                 }
             }
         
+            //difesa in profondità potrebbe esserci un leftover per arrotondamenti
             excess += interestRemaining;                                                                // tutto quello  che è > di loan + interest
         }
 
