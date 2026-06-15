@@ -27,7 +27,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
     uint256 public totalFundingPool;                                                        // totale dei fondi depositati (inclusi i locked)
     uint256 public totalLocked;                                                             // totale dei lockati
     uint256 public compensationPool;                                                        // amount cmp pool
-    uint256 public collateralPercentage;                                                    // colalterale al momento
+    uint256 public collateralPercentage;                                                    // collaterale al momento
 
     mapping(address => uint256) public deposits;                                            // indirizzo eoa -> ether depositati (inclusi i locked)
     mapping(address => uint256) public lockedValue;                                         // indirizzo eoa -> ether locked
@@ -41,7 +41,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
         Rejected
     }
 
-    struct Proposal {
+    struct Proposal {                                                           // la struct è meglio rispetto a mapping paralleli poichè eprmette una migliore visibilità e èermette di apssare una strujcttura dati che contiene altre varaibili
         address applicant;
         uint256 amount;
         uint8 interestRate;                                                     // 1-100
