@@ -1,4 +1,18 @@
 # misurazioni gas per operazioni chiave in vari scenari
+"""
+1. deposit — nuovo contributor / contributor esistente                                                                                                                            
+      2. withdraw — prelievo parziale                                                                                                                                                   
+      3. requestOracleUpdate — richiesta aggiornamento oracolo via pool                                                                                                                 
+      4. update — scrittura diretta oracolo (nuovo address / address esistente)                                                                                                         
+      5. submitProposal — proposta valida                                                                                                                                               
+      6. vote — approve / reject
+      7. resolveProposal — approvata (N=2 / N=5) / rifiutata (pool basso, BTC basso, weighted vote)                                                                                     
+      8. partialRepay — pagamento parziale (mid / close Successful / overpay)                                                                                                           
+      9. requestCompensation — prima richiesta / successiva su prestito fallito                                                                                                         
+     10. partialRepay — su Failed loan (proportional split)                                                                                                                             
+     11. terminate — loan chiuso con successo                                                                                                                                           
+     12. upgradeToAndCall — UUPS v2 swap
+"""
 
 from __future__ import annotations
 

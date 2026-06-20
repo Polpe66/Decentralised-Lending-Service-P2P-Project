@@ -1,4 +1,27 @@
 # permette di effettuare una demo end-to-end del servizio di lending P2PBC, guidando ogni operazione (20 steps)
+"""
+1. Initial balances — stampa stato iniziale pool, contributor, applicant                                                                                                          
+      2. Deposits — 3 contributor depositano 1, 2, 3 ETH                                                                                                                                
+      3. Partial withdraw — contrib0 preleva 0.3 ETH                                                                                                                                    
+      4. Oracle update request — applicant0 paga fee per aggiornare saldo BTC                                                                                                           
+      5. Submit proposal 1 — applicant0 propone prestito (1 ETH, 20%, 40 blocchi)                                                                                                       
+      6. Voting — contrib1,2 APPROVE, contrib0 REJECT                                                                                                                                   
+      7. Mine blocks — attende fine periodo voto                                                                                                                                        
+      8. Resolve proposal 1 — proposta approvata, deploy LoanContract
+        9. Inspect loan — stampa stato loan1                                                                                                                                              
+     10. PartialRepay (mid) — applicant0 paga 0.4 ETH                                                                                                                                   
+     11. PartialRepay (close) — applicant0 salda tutto, loan chiuso con successo                                                                                                        
+     12. Failed-loan scenario — applicant1 propone (0.6 ETH, 30%, 15 blocchi), tutti APPROVE, non ripaga                                                                                
+     13. Request compensation — contrib2 chiede compensazione per loan fallito                                                                                                          
+     14. Late partialRepay — applicant1 tarda a pagare su loan fallito                                                                                                                  
+     15. Second compensation — contrib2 richiede altra compensazione (pool rifatto)                                                                                                     
+     16. Proposal rejected (weighted vote) — proposta bocciata dal voto ponderato                                                                                                       
+     17. Proposal rejected (BTC liquidity) — fallisce per saldo BTC insufficiente 
+     18. Proposal rejected (insufficient disposable) — fallisce per fondi insufficienti   
+     19. Overpayment — applicant0 paga più del dovuto, eccesso va a compensation pool   
+     20. Final state — stampa stato finale
+
+"""
 
 import json
 import os 
