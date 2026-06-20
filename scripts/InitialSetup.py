@@ -50,6 +50,7 @@ FUND_APPLICANT = float(os.environ.get("FUND_APPLICANT", "1"))                   
  # utilità
 
  # carica un file hardhat artifact (ABI + bytecode) e ritorna un dict. Esce con errore se il file non esiste.
+ # permette di caricare le informazioni necessarie per interagire con i contratti e deployarli
 def load_artifact(path: Path) -> dict:
     if not path.exists():
         sys.exit(f"ERROR: artifact not found: {path}\nRun `npx hardhat compile` first.")
@@ -73,7 +74,7 @@ def send_eth(w3: Web3, sender_key: bytes, sender_addr: str, nonce: int, to_addr:
     signed = w3.eth.account.sign_transaction(tx, sender_key)                            # firma la transazione con la chiave privata del sender
     h = w3.eth.send_raw_transaction(signed.raw_transaction)                             # invia la transazione firmata al nodo
     w3.eth.wait_for_transaction_receipt(h)                                              # aspetta che la transazione sia inclusa in un blocco e ritorna la ricevuta (receipt)
-    return h.hex()                                                                      # ritorna l'hash della transazione come stringa esadecimale
+    return h.hex()                                                                      # ritorna l'hash della transazione come stringa esadecimale (è l'id della transazione)
 
 
 # costruisce, firma e invia una transazione per il deploy di un contratto. Usa l'ABI e bytecode dell'artifact per costruire la transazione. Ritorna l'indirizzo del contratto appena deployato e il gas usato. Esce con errore se la transazione fallisce (status != 1).
@@ -97,7 +98,7 @@ def deploy_contract(w3: Web3, artifact: dict, deployer_key: bytes, deployer_addr
 
 def main():
     # connessione al nodo
-    print(f"Connecting to {RPC_URL}…") 
+    print(f"Connecting to {RPC_URL}…")                                                  #rpc è remote procedure call, protocollo che permette al programma di chiamare funzioni su un nodo in remoto come se fossero locali
     w3 = Web3(Web3.HTTPProvider(RPC_URL))                                               # crea client web3 per interagire con il nodo tramite HTTP
     if not w3.is_connected():                                                           # verifica che il nodo risponda correttamente, altrimenti esce con un messaggio di errore
         sys.exit(f"ERROR: cannot connect to {RPC_URL}")
