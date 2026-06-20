@@ -1,4 +1,12 @@
 // SPDX-License-Identifier: MIT
+
+// LoanContract rappresenta un singolo prestito. Viene deployato da LendingPool quando una proposta è approvata.
+//  Funzioni principali: 
+// - Constructor — riceve applicant, importo, tasso, durata, lista contributor con i loro lock. Disborsa immediatamente il prestito all'applicant.                                                 
+// - partialRepay — l'applicant ripaga (parzialmente o totalmente). Ripaga prima i contributor (capitale sbloccato proporzionalmente), poi gli interessi (split in gain netto + collaterale per compensation pool). Se tutto è saldato → Status.Successful.                                                                        
+// - requestCompensation — se il loan è scaduto e non ripagato, un contributor può richiedere compensazione dalla compensation pool. Marca il loan come Failed.       
+// - terminate — pulizia finale dopo chiusura (Successful o Failed). Per i Failed verifica che tutti i contributor siano stati compensati.                           
+                                                               
 pragma solidity ^0.8.22;
 
 interface ILendingPool {                                                                // interfaccia che il loanContract usa per interagire con il lendingPool

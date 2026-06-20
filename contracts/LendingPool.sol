@@ -1,4 +1,19 @@
 // SPDX-License-Identifier: MIT
+
+
+// LendingPool è il contratto centrale del sistema P2P lending. Gestisce:               
+// - Depositi/withdraw — contributor depositano ETH e possono prelevare il disponibile 
+// - Proposte di prestito — applicant inviano proposte con importo, tasso, durata, hash indirizzo BTC (come garanzia di liquidità)                                    
+// - Votazione — contributor votano in base al peso (disposableValue). Periodo voto = 12 blocchi                                                                         
+// - Risoluzione — dopo il periodo di voto, se approvata deploya un LoanContract e blocc i fondi dei contributor                                                      
+// - Collateral pool — trattenuta percentuale sugli interessi (iniziale 50%, si aggiusta a step di 5)                                                              
+// - Compensation pool — fondo per compensare contributor in caso di loan fallito       
+// - Oracolo — interagisce con BitcoinOracle per verificare liquidità BTC dell'applicant                                                                     
+// È un contratto UUPS upgradable con initialize() al posto del costruttore. 
+
+
+
+
 pragma solidity ^0.8.22;
 
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";                 // permette di avere la funzione initialize() al posto del constructor() nei contratti upgradabili, con protezione che può essere chiamata solo una volta
