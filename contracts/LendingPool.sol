@@ -14,7 +14,7 @@ interface IBitcoinOracle {                                                      
 }
 
 contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {                // lendingpool è inizializzabile una sola volta, è upgradabile e può essere gestito da un owner (inizialmente il deployer, ma può essere trasferita la proprietà)
-    // guardia manuale per la reentrancy
+    // guardia manuale per la reentrancy, potevamo usare transient per risparmiare memoria serve almeno 0.8.24
     uint256 private _reentrancyStatus;                                                      // 1 = free, 2 = entered, meno bytecode e più semplice risperto a OpenZeppelin ReentrancyGuard, visto che abbiamo solo una funzione da proteggere e non ci interessa gestire casi di reentrancy multipla o annidata con OZ
     
     uint256 public constant MIN_DEPOSIT = 100_000;                                          // wei, il minimo che si può mettere nella lendingpool
@@ -22,7 +22,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
     uint256 public constant PROPOSAL_VOTING_PERIOD = 12;
     uint256 public constant COLLATERAL_STEP = 5;
 
-    IBitcoinOracle public oracle;                                                           // riferimento all'oracolo
+    IBitcoinOracle public oracle;                                                           // riferimento all'oracolo, non è immutable poichè viene fatto dal proxy
 
     uint256 public totalFundingPool;                                                        // totale dei fondi depositati (inclusi i locked)
     uint256 public totalLocked;                                                             // totale dei lockati

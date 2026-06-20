@@ -146,7 +146,10 @@ def parse_blocks():
         if (i + 1) % 10000 == 0:
             print(f"  ... ")
 
-    print(f"Parsing completed.")                                                            # a questo punto ho salvato tutti i bilanci e gli utxo
+    print(f"Parsing completed.")
+
+    total_sat = sum(balances.values())
+    print(f"Total spendable satoshi: {total_sat}")
 
     # Converti indirizzi stringa in hash bytes32
     hashed_balances = {}                                                                    # btc_address_hash (bytes32) -> balance (satoshi)
