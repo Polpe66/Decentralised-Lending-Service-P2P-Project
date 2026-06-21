@@ -308,7 +308,7 @@ contract LoanContract {
 
 
     function terminate() external {                                 //external perché chiamata dal lendingPool chiamata solo nei test
-        require(!terminated, "Already terminated");
+        require(!terminated, "Already terminated");                 //con cancun selfdestruct
 
         if (status == Status.Successful) {
 

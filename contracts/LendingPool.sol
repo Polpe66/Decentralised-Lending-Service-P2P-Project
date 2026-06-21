@@ -73,7 +73,7 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
     mapping(uint256 => Proposal) internal _proposals;                           // internal -> no getter automatico, fornito da noi, soliditiy non sa gestire automaticamente getter di un mapping a struct
 
     
-    address[] private _contributorList;                                         // lista ordinata dei contributor append-only, iterable
+    address[] private _contributorList;                                         // lista ordinata dei contributor append-only, iterable (dovrebbe essere internal)
     
     mapping(address => bool) private _contributorTracked;                       // flag anti-duplicati in _contributorList, indiica solo true se è già presente
 
@@ -89,13 +89,17 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
     event ProposalRejected(uint256 indexed proposalId);
 
 
+    // evitiamo di avere una initialize() chiamabile direttamente sull'implementation, che potrebbe causare problemi di sicurezza o di coerenza dello stato,
+    // visto che l'implementation è condivisa e non dovrebbe essere usata direttamente, ma solo tramite proxy,
+    // quindi blocchiamo la initialize() sull'implementation diretta, lasciandola chiamabile solo via proxy. 
+    //permette di evitare che il plugin segnali errori poichè con il proxy il costruttore non dovrebbe avere logica, initialize si può chiamare solo dal proxy
     // blocca `initialize()` sull'implementation diretta, lasciandola chiamabile solo via proxy. permette di evitare che il plugin segnali errori poichè con il proxy il costruttore non dovrebbe avere logica, initialize si può chiamare solo dal proxy
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {                                         
         _disableInitializers();
     }
 
-    // come constructor ma nei contratti upgradable
+    // serve come costruttore ma nei contratti upgradabili, viene chiamata solo una volta al deploy del proxy, non dell'implementation
     function initialize(address oracleAddr) external initializer {              // modifier initializer garantisce che questa funzione possa essere chiamata solo una volta, proteggendo contro inizializzazioni multiple che potrebbero compromettere la sicurezza del contratto e chiamata solo tramite proxy
         __Ownable_init(msg.sender);                                             // ownable è il deployer, msg.sender è il deployer, che tramite delegate call permette di preservare msg.sender originale, non è il proxy, se non lo fai nessuno sarebbe owner
         _reentrancyStatus = 1;                                                  // setta la local non reentrancy a free
@@ -193,7 +197,8 @@ contract LendingPool is Initializable, UUPSUpgradeable, OwnableUpgradeable {    
             p.approveVoters.push(msg.sender);                                 
         }
 
-        emit ProposalVoted(proposalId, msg.sender, approve);
+        emit ProposalVoted(proposalId, msg.sender, approve);        //non abbiamo implementato logica on-chain per il voto per mancanza di tempo
+                                                                    //in un sistema reale la notifica potrebbe arrivare al contributor tramite telegram
     }
 
     // usato nei test e in yesman

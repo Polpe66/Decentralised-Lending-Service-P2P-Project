@@ -39,16 +39,17 @@ contract BitcoinOracle {
         return balances[btcAddressHash];
     }
 
+    // usato in DemoOperations, LendingPool e Oracle test
     function getEthEquivalent(bytes32 btcAddressHash) external view returns (uint256) {
         return (balances[btcAddressHash] * BTC_ETH_RATE * 1 ether) / SATOSHI_PER_BTC;               //satoshi * 30 eth *10^18 / 10^8
     }
 
-    // funzione che calcola l'hash di una stringa del BTC address -> chiave bytes32
+    // funzione che calcola l'hash di una stringa del BTC address -> chiave bytes32 
     function hashBtcAddress(string calldata btcAddress) external pure returns (bytes32) {           // calldata perchè riceviamo una stringa dall'esterno e la salviamo nel campo calldata in modo di risparmiare gas
         return keccak256(abi.encodePacked(btcAddress));                                             //calcola solo hash
     }
 
-    // questa funzione permette a operator di ritirare le fee accumulate
+    // questa funzione permette a operator di ritirare le fee accumulate (usato solo in Oracle test)
     function withdrawFees() external onlyOperator {
         (bool ok, ) = operator.call{value: address(this).balance}("");                              // (bool success, bytes memory returnData) = target.call{value: x, gas: y}(payload);
         require(ok, "Withdraw failed");
