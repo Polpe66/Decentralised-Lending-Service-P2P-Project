@@ -18,8 +18,7 @@ venv/
 data/geth/
 data/history
 
-## Bitcoin blockchain data (troppo grande per git, ~896MB)
-chaindata/
+*.dat
 
 ## OS
 .DS_Store
