@@ -14,6 +14,7 @@ The platform also includes several supporting tools:
 - An **intentionally vulnerable version** of the lending pool (with a reentrancy bug) and a corresponding exploit contract, used for security demonstrations
 
 The backend is written in **Solidity 0.8.22** with **UUPS upgradeable contracts** via OpenZeppelin, orchestrated with **Hardhat** and **Python (Web3.py + bitcoinlib)**. An optional **React frontend** (Vite + Tailwind + ethers.js) provides a live read-only dashboard: it polls the chain every 3 seconds and visualises the entire system as an interactive **node-link graph**, showing the pool, the Bitcoin oracle, applicants, contributors, and active loan contracts with animated highlights every time an on-chain event occurs.
+
 ---
 
 Run all commands from the `P2PBC2026Project/` directory.
